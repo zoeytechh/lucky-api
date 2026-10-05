@@ -44,3 +44,19 @@ This file is a running log of what's been done, in order. Each build step gets a
 - Redis not yet provisioned (needed before BullMQ/leaderboard job and the Socket.IO comment feed can be built — not blocking the current step).
 
 **Next:** build the ledger/wallet foundation (Wallet + LedgerEntry models, debit/credit service with row locking, idempotency-key handling) — step 2 of the build order. Nothing after this proceeds until it's solid and tested.
+
+---
+
+## 2026-10-05 — Visual identity: Owambe Jackpot
+
+- Built a comparison artifact with three distinct, grounded visual directions (not generic SaaS defaults) for the Draw screen: **Danfo Ticket** (danfo-bus black/safety-yellow, stenciled ticket feel), **Aso-Oke Ledger** (indigo/gold, woven-stripe passbook feel), **Owambe Jackpot** (naira-green/gold, celebratory tombola-ring feel) — each rendered as a real mockup with the same content (wallet balance, round progress, entry CTA, daily leaderboard) plus explicit primary/secondary color roles and a themed loading indicator, so the choice could be made by comparison rather than description.
+- **Chosen: Owambe Jackpot**, with an explicit requirement that it not read as AI-generated template output. Concrete commitments made (not just stated): colored surfaces throughout instead of white cards + drop shadows, no gradients/glassmorphism, the secondary coral accent spent in exactly one place (the CTA glow) rather than spread across badges/buttons, semantic state color (loss = muted rust) kept distinct from the brand secondary (coral) — those had been conflated in the original mockup and were fixed before implementing for real. Committed to a single dark theme with no light-mode variant, as a deliberate product decision (a light-mode jackpot theme would undercut the premise), not an oversight.
+- Implemented in `lucky`: Tailwind v4 `@theme` token system (`ground`/`ground-raised`/`ink`/`primary`/`secondary`/`success`/`danger`), Anton (display) + Nunito Sans (body) via Google Fonts, PWA manifest colors updated to match. Built two reusable components — `RoundRing` (the circular draw-progress motif) and `Loader` (spinning drum-arc, respects `prefers-reduced-motion` via Tailwind's `motion-safe:`) — and restyled all four pages plus the nav shell.
+- **Actually verified in a browser, not just built:** no project skill existed yet for running this app, so stood up a throwaway Playwright driver (headless Chromium, screenshotted all four routes, checked console for errors) rather than just trusting a clean `tsc`/`vite build`. That caught a real bug the build couldn't have: Anton's lowercase glyphs render much weaker than its uppercase ones, so mixed-case headings ("Wallet", "Today's Top 3") looked visually inconsistent with the bold caps treatment everywhere else (nav wordmark, CTA, ring numerals). Fixed by forcing `uppercase` on every Anton heading. Re-screenshotted to confirm before committing.
+
+**Open items carried forward:**
+
+- No project skill yet for running/screenshotting `lucky` — worth generating one (`/run-skill-generator`) if this verify-in-browser step recurs often, so it doesn't need rebuilding from scratch each time.
+- Login page currently renders inside the main nav shell (showing wallet balance etc. even when "logged out") — fine as a static placeholder, but will need a proper logged-out layout once real auth (M3) exists.
+
+**Next:** M3 — phone/OTP auth + mandatory avatar onboarding (see `MILESTONES.md`).
