@@ -1,0 +1,23 @@
+node_modules
+dist
+build
+
+# env
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+
+# Prisma
+/generated
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+/src/generated/prisma

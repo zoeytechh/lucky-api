@@ -1,0 +1,42 @@
+// Prisma schema — built incrementally per the implementation plan's build order.
+// Step 1 (this file so far): users / auth. Step 2 adds Wallet + LedgerEntry.
+// Step 3 adds DrawRound + DrawEntry. Later steps add withdrawals, deposits,
+// leaderboard, and comments. See the plan for the full data model.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  SYSTEM
+  ADMIN
+}
+
+enum KycStatus {
+  NONE
+  PENDING
+  VERIFIED
+}
+
+model User {
+  id          String    @id @default(uuid())
+  phoneNumber String    @unique @map("phone_number")
+  fullName    String?   @map("full_name")
+  // Nullable at the DB level: SYSTEM/ADMIN rows are exempt from the
+  // mandatory-avatar onboarding gate, which is enforced in the app layer
+  // (requireCompleteProfile middleware) for role=USER instead of a DB
+  // constraint, since the requirement is role-conditional.
+  avatarUrl   String?   @map("avatar_url")
+  role        Role      @default(USER)
+  kycStatus   KycStatus @default(NONE) @map("kyc_status")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("users")
+}
