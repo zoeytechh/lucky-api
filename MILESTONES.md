@@ -14,10 +14,14 @@ and the implementation plan for full technical detail on each.
       all four screens restyled and verified rendering correctly.
       *Done 2026-10-05.*
 
-- [ ] **M3 — Auth: phone/OTP + mandatory avatar onboarding.** Real
-      `/api/auth/otp/request` + `/verify` + `/refresh`, SMS provider
-      integration, JWT session issuance, Cloudinary avatar upload, the
-      `requireCompleteProfile` gate. *Next up.*
+- [x] **M3 — Auth: phone/OTP + mandatory avatar onboarding.** OTP
+      request/verify/refresh/logout/me, rotating JWT sessions, the
+      onboarding avatar gate, and a Profile page (photo, name, logout).
+      Verified end-to-end in a real browser. *Done 2026-10-05 — with one
+      open item: Termii and Cloudinary are both still running on their
+      dev-mode fallbacks (fixed OTP code, inline data-URL avatar) because
+      neither account exists yet. Code is ready for both; swap in real
+      credentials in `lucky-api/.env` before real users touch this.*
 
 - [ ] **M4 — Wallet & ledger foundation.** `Wallet` + `LedgerEntry` models,
       debit/credit service with row locking and idempotency keys, the

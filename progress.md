@@ -60,3 +60,28 @@ This file is a running log of what's been done, in order. Each build step gets a
 - Login page currently renders inside the main nav shell (showing wallet balance etc. even when "logged out") — fine as a static placeholder, but will need a proper logged-out layout once real auth (M3) exists.
 
 **Next:** M3 — phone/OTP auth + mandatory avatar onboarding (see `MILESTONES.md`).
+
+---
+
+## 2026-10-05 — M3: phone/OTP auth, onboarding, profile
+
+- **Data model:** `OtpCode` and `RefreshToken`, migrated against the real Neon database (first real migration run — `prisma migrate dev`, no shadow-database issues). Deviated from the plan's "OTP codes in Redis": put them in Postgres instead, same security properties (hashed, 5-minute expiry, 5-attempt limit, rate-limited to one request/60s per number), one fewer external dependency before Redis is otherwise needed (M9 BullMQ, M10 comment feed).
+- **Session design:** short-lived access JWT (15 min) + a refresh token that's a signed JWT *and* separately stored hashed server-side — possession of a valid-looking JWT isn't enough, it has to match a non-revoked, non-expired DB row. Rotates on every refresh (old revoked, new issued); this is what let a real bug surface (below). Refresh token lives in an httpOnly cookie scoped to `/api/auth`; access token is never persisted client-side, only held in memory and restored via silent refresh on page load.
+- **Avatar upload:** Cloudinary `upload_stream`, face-centered 512×512 crop, `multer` memory storage with a 5MB/JPEG-PNG-WEBP limit.
+- **Dev-mode fallbacks, both clearly gated and commented:** fixed `123456` OTP code when `TERMII_API_KEY` is unset (the user asked for this explicitly, to make testing fast while no Termii account exists yet); inline base64 data-URL avatar when `CLOUDINARY_CLOUD_NAME` is unset. Both are real-integration-ready — just waiting on the accounts to exist. **Cloudinary credentials requested from the user, not yet provided** — once they land in `.env`, avatars switch from data-URLs to real hosted image URLs automatically, no code change needed.
+- **Frontend:** real two-step phone/OTP `Login`, a new `Onboarding` page (the mandatory first-avatar gate), a new `Profile` page (change photo, edit name, phone display, logout) reachable from the navbar avatar. `App.tsx` became the route guard — loading/unauthenticated/incomplete-profile states redirect before the nav+`Outlet` ever render.
+
+**Bugs caught by actually testing in a browser, not just trusting `tsc`/build** (headless Playwright, full flow each time: login → onboarding → avatar upload → authenticated → reload → profile → edit name → change photo → logout):
+
+1. **React hooks-order violation.** `Login.tsx`/`Onboarding.tsx` had early `return <Navigate />` guards placed *before* their `useState` calls — React requires every hook to run unconditionally in the same order every render. Surfaced as "Rendered fewer hooks than expected" and broke navigation. Fixed by moving every guard clause to after all hook calls.
+2. **Refresh-token rotation race.** React StrictMode double-invokes effects in dev; `AuthProvider`'s mount effect called `/api/auth/refresh` twice near-simultaneously, both carrying the same cookie token. The first request rotated it (revoked old, issued new); the second arrived already-revoked and got a 401. Not just a dev artifact — the same race could hit production under genuinely concurrent requests. Fixed with a shared in-flight-promise wrapper (`refreshSession()` in `api.ts`) so every caller shares one request instead of each firing its own.
+3. **Mobile nav overlap.** The first nav redesign crammed wallet balance + avatar + a "Log out" text link into one top-bar row; at 420px width "Log out" wrapped and visually collided with the wallet amount. Caught in a screenshot, not a code review. Resolved (after a brief bottom-tab-bar detour that was reverted per direction) by moving logout off the navbar entirely — it now lives on the new Profile page, reached by tapping the avatar, which freed enough space for links + wallet + avatar to sit comfortably in one row.
+4. **Global `cursor: pointer`** added for all buttons — browsers default `<button>` to `cursor: default`, not `pointer`, which read as broken/unpolished on every action button in the app.
+
+**Open items carried forward:**
+
+- **Cloudinary and Termii accounts still needed** — both flows are fully built and tested against their dev-mode fallbacks, but need real credentials in `lucky-api/.env` before this ships to real users.
+- Refresh-token rotation has no grace-period/reuse-detection window (a legitimate concurrent-tab scenario in production could still hit the same race pattern bug #2 above was built to avoid, just from two real tabs instead of StrictMode). Noted as a future hardening item, not built now — the client-side fix covers the actual current architecture (single SPA instance).
+- No project skill yet for running/screenshotting either app — the same gap noted last session, now hit twice.
+
+**Next:** M4 — wallet & ledger foundation (see `MILESTONES.md`). Nothing past this point proceeds until the `balance == sum(ledger)` invariant is solid and tested under concurrency.
