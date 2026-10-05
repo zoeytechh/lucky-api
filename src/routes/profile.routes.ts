@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import multer from 'multer'
+import { z } from 'zod'
 import { requireAuth } from '../middleware/auth'
 import { uploadAvatar } from '../lib/cloudinary'
 import { prisma } from '../lib/prisma'
@@ -27,6 +28,21 @@ router.post('/avatar', requireAuth, upload.single('avatar'), async (req, res) =>
   const user = await prisma.user.update({
     where: { id: req.user!.id },
     data: { avatarUrl },
+    select: { id: true, phoneNumber: true, fullName: true, avatarUrl: true, role: true },
+  })
+
+  res.json({ user })
+})
+
+const updateSchema = z.object({ fullName: z.string().trim().min(1).max(80) })
+
+router.patch('/', requireAuth, async (req, res) => {
+  const parsed = updateSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ message: 'Invalid name' })
+
+  const user = await prisma.user.update({
+    where: { id: req.user!.id },
+    data: { fullName: parsed.data.fullName },
     select: { id: true, phoneNumber: true, fullName: true, avatarUrl: true, role: true },
   })
 
