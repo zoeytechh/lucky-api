@@ -38,5 +38,40 @@ model User {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
+  refreshTokens RefreshToken[]
+
   @@map("users")
+}
+
+// Phone OTP codes. Deliberately in Postgres rather than Redis (per the
+// plan) so auth doesn't need Redis provisioned before it's otherwise
+// needed (BullMQ/leaderboard, Socket.IO) — same security properties
+// (hashed, short-lived, attempt-limited), one fewer dependency for now.
+model OtpCode {
+  id          String    @id @default(uuid())
+  phoneNumber String    @map("phone_number")
+  codeHash    String    @map("code_hash")
+  expiresAt   DateTime  @map("expires_at")
+  consumedAt  DateTime? @map("consumed_at")
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([phoneNumber, createdAt])
+  @@map("otp_codes")
+}
+
+// Refresh tokens are stored hashed (never the raw token) so a database
+// leak alone can't be used to mint sessions. Rotated on every refresh;
+// revoked on logout.
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id])
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("refresh_tokens")
 }
