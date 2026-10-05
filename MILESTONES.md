@@ -23,15 +23,27 @@ and the implementation plan for full technical detail on each.
       neither account exists yet. Code is ready for both; swap in real
       credentials in `lucky-api/.env` before real users touch this.*
 
-- [ ] **M4 — Wallet & ledger foundation.** `Wallet` + `LedgerEntry` models,
+- [x] **M4 — Wallet & ledger foundation.** `Wallet` + `LedgerEntry` models,
       debit/credit service with row locking and idempotency keys, the
-      `balance == sum(ledger)` invariant tested under concurrency. Nothing
-      past this point proceeds until it's solid.
+      `balance == sum(ledger)` invariant tested under real concurrency
+      (vitest + the live dev database, not mocks). *Done 2026-10-06 — see
+      `progress.md` for four real bugs the test suite caught, including a
+      finding that changes M5's design (next item).*
 
-- [ ] **M5 — Draw rounds, entries, settlement.** The 1000-entry rolling
-      round, row-locked entry flow, the CSPRNG shuffle/settlement
-      algorithm. Highest-risk module — gated by its own concurrency and
-      money-math test suite before anything is built on top of it.
+- [ ] **M5 — Draw rounds, entries, settlement.** ⚠️ **Design needs
+      revisiting before building, per a finding from M4's concurrency
+      testing:** 50 fully-serialized transactions through one row lock
+      took ~30s end to end against live Neon. The plan's original design
+      serializes up to 1000 entries through a single round's row lock,
+      settling synchronously in the 1000th transaction — naive
+      extrapolation from the measured number suggests that could take
+      minutes, not seconds, which isn't viable for a user waiting on their
+      entry to confirm. Needs a design pass (lighter critical section?
+      external queue-based serialization instead of DB lock queuing?
+      something else?) before implementation starts, not just a bigger
+      timeout. Still the highest-risk module either way — gated by its own
+      concurrency and money-math test suite before anything is built on
+      top of it.
 
 - [ ] **M6 — Wire the UI to real data.** Replace the static placeholder
       numbers on Draw/Wallet/Leaderboard with live data from M3–M5.

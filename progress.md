@@ -85,3 +85,26 @@ This file is a running log of what's been done, in order. Each build step gets a
 - No project skill yet for running/screenshotting either app — the same gap noted last session, now hit twice.
 
 **Next:** M4 — wallet & ledger foundation (see `MILESTONES.md`). Nothing past this point proceeds until the `balance == sum(ledger)` invariant is solid and tested under concurrency.
+
+---
+
+## 2026-10-06 — M4: wallet & ledger foundation
+
+- **Data model:** `Wallet` (one per user, cached `balanceMinor`) + `LedgerEntry` (append-only, `idempotencyKey`-deduped), migrated against Neon. `postLedgerEntry` (ledger.service) does the insert + balance math; `wallet.service` owns the row-locking (`SELECT ... FOR UPDATE`) that makes it safe to call concurrently, plus `getOrCreateWallet` / `getSystemWallet`.
+- **Real test suite, not a trust exercise:** vitest, running actual parallel transactions against the live dev database — not mocked. 8 tests: basic credit/debit math, insufficient-funds rejection, idempotency replay (single and under concurrency), and the two tests that actually prove the row lock works — 50 concurrent credits with zero lost updates, and 30 concurrent debits racing for only enough balance for 10, asserting *exactly* 10 succeed and the wallet never goes negative.
+
+**This test suite earned its keep immediately — four real bugs found, not hypothetical ones:**
+
+1. **Type mismatch in the lock query.** `wallets.id` is Postgres `text` (Prisma's default `String` mapping), not a native `uuid` column. An explicit `::uuid` cast on the query parameter made Postgres refuse the comparison (`operator does not exist: text = uuid`). Removed the cast.
+2. **Prisma 7's `upsert()` isn't reliably atomic inside an existing interactive transaction, at least through the pg driver adapter.** Expected it to compile to `INSERT ... ON CONFLICT DO UPDATE`; under real concurrency it surfaced a raw unique-constraint violation instead. Tried a fallback — catch the violation, look up what the other transaction created — and hit a second, more fundamental issue: **one failed statement aborts the entire Postgres transaction**, so a fallback query in the same `catch` block fails too (`current transaction is aborted, commands ignored until end of transaction block`). The fix that's actually safe inside a transaction: raw `INSERT ... ON CONFLICT DO NOTHING` (never raises on conflict — 0 rows back, transaction stays healthy), falling back to a plain `SELECT` only when nothing was inserted. Applied to both `getOrCreateWallet` and `getSystemWallet`.
+3. **Infrastructure sized for the happy path, not contention.** node-postgres's default pool (`max: 10`) and Prisma's default interactive-transaction budget (~2s to acquire a slot, 5s to complete) both turned out far too small the moment real concurrency showed up — failures that looked like correctness bugs were actually just connections and clocks too small for the queue, while the locking logic itself was right the whole time. Pool bumped to 50, transaction budget to a shared `runInTransaction()` helper (60s) that every money-moving call now goes through instead of raw `prisma.$transaction`, so this budget is decided once, not per call site.
+4. **A finding that changes M5, not just a bug fixed here:** even after all three fixes above, 50 fully-serialized transactions through one row lock took **~30 seconds end to end** against live Neon. The plan's original M5 design serializes up to 1000 entries through a single draw round's row lock, settling synchronously inside the 1000th entry's transaction. Naive extrapolation from the measured number suggests that could take **minutes**, not seconds — not viable for a real user waiting on their entry to confirm. This needs an actual design pass before M5 implementation starts (a lighter critical section? external queue-based serialization instead of DB lock queuing? something else?), not just a bigger timeout. Flagged at the top of the M5 entry in `MILESTONES.md` so it can't be missed.
+
+**Open items carried forward:**
+
+- **M5's design needs rework before implementation**, per finding #4 above — this is now the single most important open item.
+- Cloudinary and Termii accounts still needed (carried from M3).
+- Refresh-token rotation grace-period/reuse-detection (carried from M3).
+- No project skill yet for running/testing either app — carried forward again, now a recurring gap worth actually fixing rather than renoting a third time.
+
+**Next:** resolve the M5 design question above, then build the draw round/entry/settlement module against whatever concurrency approach comes out of it.
