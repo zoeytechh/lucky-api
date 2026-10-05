@@ -39,6 +39,7 @@ model User {
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   refreshTokens RefreshToken[]
+  wallet        Wallet?
 
   @@map("users")
 }
@@ -74,4 +75,60 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+enum LedgerEntryType {
+  DEPOSIT
+  DRAW_ENTRY_STAKE
+  DRAW_ENTRY_FEE
+  DRAW_WINNER_PAYOUT
+  DRAW_REFUND
+  LEADERBOARD_PRIZE
+  WITHDRAWAL
+  WITHDRAWAL_REVERSAL
+}
+
+// One wallet per user (including the SYSTEM user, which functions as the
+// company revenue account — see wallet.service.ts). balanceMinor is a
+// cached/derived value: it must only ever be mutated in the same
+// transaction as the ledger entry that justifies the change, and must
+// always equal SUM(ledgerEntries.amountMinor) — enforced in code and in
+// the test suite, not by the database itself.
+model Wallet {
+  id           String   @id @default(uuid())
+  userId       String   @unique @map("user_id")
+  user         User     @relation(fields: [userId], references: [id])
+  balanceMinor BigInt   @default(0) @map("balance_minor")
+  currency     String   @default("NGN")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  ledgerEntries LedgerEntry[]
+
+  @@map("wallets")
+}
+
+// Append-only. Never updated or deleted — a correction is a new entry,
+// never an edit. idempotencyKey is the dedupe mechanism: any retried
+// money-moving operation reuses the same key, and the unique constraint
+// turns a retry into a safe no-op instead of a double-application.
+model LedgerEntry {
+  id                String          @id @default(uuid())
+  walletId          String          @map("wallet_id")
+  wallet            Wallet          @relation(fields: [walletId], references: [id])
+  amountMinor       BigInt          @map("amount_minor")
+  entryType         LedgerEntryType @map("entry_type")
+  // Polymorphic pointer (e.g. referenceType="DRAW_ENTRY", referenceId=<id>)
+  // — intentionally not a DB foreign key, since it points at different
+  // tables depending on entryType.
+  referenceType     String?         @map("reference_type")
+  referenceId       String?         @map("reference_id")
+  balanceAfterMinor BigInt          @map("balance_after_minor")
+  idempotencyKey    String          @unique @map("idempotency_key")
+  metadata          Json?
+  createdAt         DateTime        @default(now()) @map("created_at")
+
+  @@index([walletId, createdAt])
+  @@index([referenceType, referenceId])
+  @@map("ledger_entries")
 }
