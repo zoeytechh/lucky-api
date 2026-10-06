@@ -4,7 +4,9 @@ import 'dotenv/config'
 import express, { type NextFunction, type Request, type Response } from 'express'
 import { prisma } from './lib/prisma'
 import authRoutes from './routes/auth.routes'
+import drawRoutes from './routes/draw.routes'
 import profileRoutes from './routes/profile.routes'
+import walletRoutes from './routes/wallet.routes'
 
 const app = express()
 
@@ -38,10 +40,11 @@ app.get('/api/health', async (_req, res) => {
 
 app.use('/api/auth', authRoutes)
 app.use('/api/profile', profileRoutes)
+app.use('/api/draw', drawRoutes)
+app.use('/api/wallet', walletRoutes)
 
 // Route modules are added here as each build-order step lands:
-// draw.routes, wallet.routes, webhooks.routes, leaderboard.routes,
-// comments.routes (see the implementation plan).
+// webhooks.routes, leaderboard.routes, comments.routes (see the plan).
 
 // biome-ignore lint: express identifies error middleware by arity (4 args)
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {

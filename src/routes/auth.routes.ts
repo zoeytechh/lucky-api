@@ -39,17 +39,21 @@ const verifySchema = z.object({
 
 router.post('/otp/request', async (req, res) => {
   const parsed = phoneSchema.safeParse(req.body)
-  if (!parsed.success) return res.status(400).json({ message: 'Invalid phone number' })
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Invalid phone number', code: 'INVALID_PHONE' })
+  }
 
   const phone = normalizeNigerianPhone(parsed.data.phoneNumber)
-  if (!phone) return res.status(400).json({ message: 'Invalid phone number' })
+  if (!phone) {
+    return res.status(400).json({ message: 'Invalid phone number', code: 'INVALID_PHONE' })
+  }
 
   try {
     await requestOtp(phone)
     res.json({ sent: true })
   } catch (err) {
     if (err instanceof OtpRateLimitError) {
-      return res.status(429).json({ message: err.message })
+      return res.status(429).json({ message: err.message, code: 'OTP_RATE_LIMIT' })
     }
     throw err
   }
@@ -65,12 +69,14 @@ router.post('/otp/verify', async (req, res) => {
   try {
     await verifyOtp(phone, parsed.data.code)
   } catch (err) {
-    if (
-      err instanceof OtpInvalidError ||
-      err instanceof OtpExpiredError ||
-      err instanceof OtpTooManyAttemptsError
-    ) {
-      return res.status(400).json({ message: err.message })
+    if (err instanceof OtpExpiredError) {
+      return res.status(400).json({ message: err.message, code: 'OTP_EXPIRED' })
+    }
+    if (err instanceof OtpTooManyAttemptsError) {
+      return res.status(400).json({ message: err.message, code: 'OTP_TOO_MANY_ATTEMPTS' })
+    }
+    if (err instanceof OtpInvalidError) {
+      return res.status(400).json({ message: err.message, code: 'OTP_INVALID' })
     }
     throw err
   }
