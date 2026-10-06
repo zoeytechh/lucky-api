@@ -40,13 +40,19 @@ and the implementation plan for full technical detail on each.
       the way and the dev-vs-production latency finding from getting the
       slow tests green.*
 
-- [ ] **M6 — Wire the UI to real data.** Replace the static placeholder
-      numbers on Draw/Wallet/Leaderboard with live data from M3–M5.
-      Direction set for this milestone: the mobile nav becomes a proper
-      slide-out/hamburger menu (not links crammed into the top bar), and
-      interactions lean on Motion throughout — draw-result reveals, page
-      transitions, tap feedback — built from the Owambe Jackpot system's
-      own motifs (gold ring, drum-spin), not generic stock animation.
+- [x] **M6 — Wire the UI to real data.** Draw and Wallet pages replaced
+      their static placeholders with real data from M3–M5 — real round
+      state, real entries, real balance, real transaction history.
+      Leaderboard stays placeholder *on purpose*: it genuinely has no real
+      data source until M9's daily job exists, not an oversight. Mobile
+      nav became a proper slide-out hamburger menu; errors across every
+      page now render through a themed, per-error-code `ErrorAlert`
+      instead of plain text. *Done 2026-10-06 — verified end-to-end via
+      Playwright against the live dev database, including a real bug
+      caught that way (see `progress.md`). Two things still open: live
+      manual testing with the user and a friend as real entrants
+      (in progress), and Cloudinary credentials still being filled in to
+      replace the dev-mode avatar fallback.*
 
 - [ ] **M7 — Paystack deposits.** Dedicated virtual accounts + card
       checkout, webhook-verified wallet crediting. Real money can enter

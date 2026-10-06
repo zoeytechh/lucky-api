@@ -135,3 +135,34 @@ Also deepened `/api/health` while reviewing Foundation layer 13's audit checklis
 - Deploy `lucky-api` in the same region as the Neon database once real hosting is set up — see finding #2 above.
 
 **Next:** M6 — wire the UI to real data. Direction set by the user for this milestone: mobile nav becomes a proper slide-out/hamburger menu, interactions lean on Motion throughout (draw-result reveals, transitions, tap feedback) built from the Owambe Jackpot system's own motifs, not generic animation.
+
+---
+
+## 2026-10-06 — M6: wire Draw/Wallet to real data, mobile nav, themed errors, Render deploy fix
+
+- **Backend:** new HTTP surface M4/M5's service layer never had — `GET /api/draw/current`, `POST /api/draw/entries`, `GET /api/draw/entries` (the user's own, with outcome), `GET /api/wallet`, `GET /api/wallet/transactions`. Error responses now carry a machine-readable `code` alongside `message` (`INSUFFICIENT_BALANCE`, `OTP_EXPIRED`/`OTP_INVALID`/`OTP_RATE_LIMIT`/`OTP_TOO_MANY_ATTEMPTS`, `VALIDATION_ERROR`) so the frontend can render tailored copy instead of parsing message strings — the user specifically asked for "industry standard" per-error-type display, not a generic red line.
+- **Frontend:** Draw and Wallet pages replaced their static placeholders with the real thing — round state, entry submission, wallet balance, transaction history. New `WalletContext` (mirrors `AuthContext`'s pattern) keeps balance in sync across the nav, Draw, and Wallet pages. Mobile nav became a proper slide-out hamburger menu (Motion spring transition), inline links preserved above the `sm` breakpoint. Every page's plain red error text replaced with a themed `ErrorAlert` component — icon + title + message + optional action link, mapped per error code.
+
+**Two real bugs caught by actually testing in a browser against the live backend, not trusting a clean build:**
+
+1. **Wallet balance stuck on `—` forever after onboarding.** `WalletContext`'s fetch effect depended only on auth `status`, which becomes `'authenticated'` at OTP-verify time — *before* onboarding/avatar upload. So the very first fetch correctly got rejected with a 403 (`requireCompleteProfile`), and nothing ever re-triggered it once the profile actually completed, since `status` itself doesn't change again. Fixed by also depending on whether the profile is complete (`user.avatarUrl`).
+2. **A test-script bug that looked like a session bug at first:** reusing a saved Playwright session to test the funded-entry path kept landing back on the login page. Root cause: the test saved its session snapshot mid-flow, then kept navigating in the *same* browser afterward — each full page load silently rotates the refresh token (by design, per M3), so the snapshot taken earlier was already stale by the time it got reused. Fixed by saving the snapshot last, not mid-script. Not an app bug, but a good reminder of how easy it is to shoot yourself with single-use rotating tokens even as the one writing the test.
+
+**Also landed this session:**
+
+- **Deployment fix, caught from the user's first real Render attempt:** the build failed with a wall of TypeScript errors (`Cannot find module '../generated/prisma/client'`, plus several seemingly-unrelated `implicit any` and `string|null` errors). Root cause: `src/generated/prisma` is gitignored, so a fresh clone has no generated client at all — everything else was cascading noise from that one missing piece, confirmed by reproducing it locally (deleted the generated client, ran the real build, got the exact same error shape) and fixing it at the source: `prisma generate` now runs as part of `npm run build`, not left to an assumed postinstall hook. Rebuilt clean afterward with zero other changes needed.
+- Deepened `/api/health` to check the database, not just that the server responds (per the Foundation layer-13 review).
+- `DRAW_ROUND_SIZE` env override (already built for tests) now also used to let the user manually test the full draw/settlement flow with a handful of real entries instead of needing 1000 — currently set to 4 in local `.env`, with two throwaway filler accounts seeded via the new `scripts/seed-filler-entries.ts` so the user and a friend can be the entrants who actually complete a round themselves. **This is a local-only `.env` setting — never appropriate outside manual testing, and `.env` is gitignored so it can't accidentally ship.**
+- Removed `lucky/.env.example` per the user's explicit request after discussing the tradeoff (it was the only piece of that env setup actually tracked in git — a fresh clone now has no record of needing `VITE_API_URL` — acceptable here since nothing in that file is sensitive or hard to rediscover).
+
+**Open items carried forward:**
+
+- Cloudinary credentials — the user is actively filling these into `.env` as of this session; not yet complete (cloud name and secret still blank as of this entry). Once done, needs a real verification (upload once, upload again, confirm in the Cloudinary dashboard that it's the same asset overwritten via `public_id`+`overwrite:true`, not two separate uploads) — not just assumed from config.
+- Termii account (carried from M3).
+- Refresh-token rotation grace-period/reuse-detection (carried from M3/M4).
+- No project skill yet for running/testing either app — carried forward a fourth time.
+- Foundation layer 13 audit — still paused, revisit before any real deployment.
+- `DRAW_ROUND_SIZE=4` in local `.env` must be removed (or left unset) before anything resembling production use.
+- Render deployment in progress with the user — build fix shipped, env var configuration and (possibly) `prisma migrate deploy` against whatever database Render points at are the likely next steps.
+
+**Next:** finish the live manual test (user + a friend as real entrants completing round 167), then M7 — Paystack deposits, the first milestone where real money can enter the system.
