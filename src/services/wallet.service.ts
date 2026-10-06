@@ -45,6 +45,15 @@ function mapWalletRow(row: WalletFullRow) {
  * SELECT only if nothing was inserted.
  */
 export async function getOrCreateWallet(tx: Prisma.TransactionClient, userId: string) {
+  // SELECT first: the wallet almost always already exists, so this keeps
+  // the common case to one round trip instead of always attempting an
+  // INSERT that's expected to conflict.
+  const existing = await tx.$queryRaw<WalletFullRow[]>`
+    SELECT id, user_id, balance_minor, currency, created_at, updated_at
+    FROM wallets WHERE user_id = ${userId}
+  `
+  if (existing.length > 0) return mapWalletRow(existing[0])
+
   const id = randomUUID()
   const inserted = await tx.$queryRaw<WalletFullRow[]>`
     INSERT INTO wallets (id, user_id, balance_minor, currency, created_at, updated_at)
@@ -54,22 +63,44 @@ export async function getOrCreateWallet(tx: Prisma.TransactionClient, userId: st
   `
   if (inserted.length > 0) return mapWalletRow(inserted[0])
 
-  const existing = await tx.$queryRaw<WalletFullRow[]>`
+  // Lost the race — another transaction created it between our SELECT
+  // and INSERT attempt above.
+  const fallback = await tx.$queryRaw<WalletFullRow[]>`
     SELECT id, user_id, balance_minor, currency, created_at, updated_at
     FROM wallets WHERE user_id = ${userId}
   `
-  if (existing.length === 0) throw new Error(`Failed to get or create wallet for user ${userId}`)
-  return mapWalletRow(existing[0])
+  if (fallback.length === 0) throw new Error(`Failed to get or create wallet for user ${userId}`)
+  return mapWalletRow(fallback[0])
 }
 
 type UserRow = { id: string }
 
+// The SYSTEM user's id never changes once created — memoized in-process
+// so a hot path that touches it on every single draw entry (crediting the
+// fee) costs zero round trips after the first one this process ever makes,
+// instead of one SELECT every time.
+let cachedSystemUserId: string | null = null
+
 /**
- * The company revenue wallet: fees land here, leaderboard prizes are paid
- * from it. Same ON CONFLICT DO NOTHING pattern as getOrCreateWallet above,
- * for the same reason.
+ * The company revenue account's user id (fees are credited here via the
+ * normal credit() path, keyed by userId like any other wallet movement —
+ * see draw.service.ts). Same ON CONFLICT DO NOTHING pattern as
+ * getOrCreateWallet above, for the same reason.
  */
-export async function getSystemWallet(tx: Prisma.TransactionClient = prisma) {
+export async function getSystemUserId(tx: Prisma.TransactionClient = prisma) {
+  if (cachedSystemUserId) return cachedSystemUserId
+
+  // SELECT first — see getOrCreateWallet's comment; the SYSTEM user exists
+  // after the very first call ever, so this is a one-trip lookup on every
+  // subsequent draw entry instead of a wasted INSERT attempt each time.
+  const existing = await tx.$queryRaw<UserRow[]>`
+    SELECT id FROM users WHERE phone_number = ${SYSTEM_PHONE}
+  `
+  if (existing[0]) {
+    cachedSystemUserId = existing[0].id
+    return cachedSystemUserId
+  }
+
   const id = randomUUID()
   const inserted = await tx.$queryRaw<UserRow[]>`
     INSERT INTO users (id, phone_number, role, full_name, created_at, updated_at)
@@ -77,15 +108,22 @@ export async function getSystemWallet(tx: Prisma.TransactionClient = prisma) {
     ON CONFLICT (phone_number) DO NOTHING
     RETURNING id
   `
-  let userId = inserted[0]?.id
-  if (!userId) {
-    const existing = await tx.$queryRaw<UserRow[]>`
-      SELECT id FROM users WHERE phone_number = ${SYSTEM_PHONE}
-    `
-    if (!existing[0]) throw new Error('Failed to get or create SYSTEM user')
-    userId = existing[0].id
+  if (inserted[0]) {
+    cachedSystemUserId = inserted[0].id
+    return cachedSystemUserId
   }
-  return getOrCreateWallet(tx, userId)
+
+  const fallback = await tx.$queryRaw<UserRow[]>`
+    SELECT id FROM users WHERE phone_number = ${SYSTEM_PHONE}
+  `
+  if (!fallback[0]) throw new Error('Failed to get or create SYSTEM user')
+  cachedSystemUserId = fallback[0].id
+  return cachedSystemUserId
+}
+
+/** The company revenue wallet: fees land here, leaderboard prizes are paid from it. */
+export async function getSystemWallet(tx: Prisma.TransactionClient = prisma) {
+  return getOrCreateWallet(tx, await getSystemUserId(tx))
 }
 
 type WalletRow = { id: string; balance_minor: bigint }
@@ -95,13 +133,25 @@ type WalletRow = { id: string; balance_minor: bigint }
  * (Postgres SELECT ... FOR UPDATE) — concurrent callers touching the same
  * wallet queue up and run strictly one at a time. This is the mechanism
  * that makes debit/credit race-free; everything below trusts it.
+ *
+ * Looks up and locks by userId directly (one round trip) rather than
+ * calling getOrCreateWallet first and then locking by the returned id
+ * (two round trips) — the wallet almost always already exists by the
+ * time money moves through it, so this collapses the common case from 2
+ * queries to 1. Only falls back to getOrCreateWallet (create-or-find,
+ * its own race-safe logic) when the wallet genuinely doesn't exist yet.
  */
-async function lockWallet(tx: Prisma.TransactionClient, walletId: string) {
+async function lockWalletByUserId(tx: Prisma.TransactionClient, userId: string) {
   const rows = await tx.$queryRaw<WalletRow[]>`
-    SELECT id, balance_minor FROM wallets WHERE id = ${walletId} FOR UPDATE
+    SELECT id, balance_minor FROM wallets WHERE user_id = ${userId} FOR UPDATE
   `
-  if (rows.length === 0) throw new Error(`Wallet ${walletId} not found`)
-  return rows[0]
+  if (rows.length > 0) return rows[0]
+
+  const created = await getOrCreateWallet(tx, userId)
+  const locked = await tx.$queryRaw<WalletRow[]>`
+    SELECT id, balance_minor FROM wallets WHERE id = ${created.id} FOR UPDATE
+  `
+  return locked[0]
 }
 
 type MovementParams = {
@@ -119,14 +169,13 @@ async function applyMovement(
   signedAmountMinor: bigint,
   params: MovementParams,
 ) {
-  const wallet = await getOrCreateWallet(tx, params.userId)
-  const locked = await lockWallet(tx, wallet.id)
+  const locked = await lockWalletByUserId(tx, params.userId)
 
   const { ledgerEntry, newBalanceMinor, applied } = await postLedgerEntry(
     tx,
     locked.balance_minor,
     {
-      walletId: wallet.id,
+      walletId: locked.id,
       amountMinor: signedAmountMinor,
       entryType: params.entryType,
       referenceType: params.referenceType,
@@ -138,12 +187,12 @@ async function applyMovement(
 
   if (applied) {
     await tx.wallet.update({
-      where: { id: wallet.id },
+      where: { id: locked.id },
       data: { balanceMinor: newBalanceMinor },
     })
   }
 
-  return { walletId: wallet.id, balanceMinor: newBalanceMinor, ledgerEntry, applied }
+  return { walletId: locked.id, balanceMinor: newBalanceMinor, ledgerEntry, applied }
 }
 
 /** Debits a wallet. Throws InsufficientFundsError if it would go negative. */

@@ -40,6 +40,7 @@ model User {
 
   refreshTokens RefreshToken[]
   wallet        Wallet?
+  drawEntries   DrawEntry[]
 
   @@map("users")
 }
@@ -131,4 +132,69 @@ model LedgerEntry {
   @@index([walletId, createdAt])
   @@index([referenceType, referenceId])
   @@map("ledger_entries")
+}
+
+enum DrawRoundStatus {
+  OPEN
+  SETTLED
+}
+
+// At most one OPEN round ever exists — enforced by a partial unique index
+// added by hand to the migration (Prisma schema language can't express a
+// filtered/partial unique index), not just application logic.
+model DrawRound {
+  id          String          @id @default(uuid())
+  roundNumber Int             @unique @default(autoincrement()) @map("round_number")
+  status      DrawRoundStatus @default(OPEN)
+  // CHECK (entry_count BETWEEN 0 AND 1000), also added by hand.
+  entryCount  Int             @default(0) @map("entry_count")
+  // Soft pointer to the winning DrawEntry — not a formal relation (same
+  // reasoning as LedgerEntry.referenceId): avoids a second relation
+  // between these two tables just for an audit convenience field.
+  winnerEntryId String?       @map("winner_entry_id")
+  refundCount Int?            @map("refund_count")
+  lossCount   Int?            @map("loss_count")
+  // Shuffle algorithm name + full post-shuffle ordering + timestamp, for
+  // dispute resolution — see the settlement algorithm in the plan.
+  shuffleAudit Json?          @map("shuffle_audit")
+  openedAt    DateTime        @default(now()) @map("opened_at")
+  settledAt   DateTime?       @map("settled_at")
+
+  entries DrawEntry[]
+
+  @@map("draw_rounds")
+}
+
+enum DrawEntryOutcome {
+  PENDING
+  WON
+  REFUNDED
+  LOST
+}
+
+model DrawEntry {
+  id       String    @id @default(uuid())
+  roundId  String    @map("round_id")
+  round    DrawRound @relation(fields: [roundId], references: [id])
+  userId   String    @map("user_id")
+  user     User      @relation(fields: [userId], references: [id])
+  // UNIQUE(roundId, slotNumber) + CHECK (1..1000), added by hand — the
+  // hard DB-level guarantee a round can never exceed 1000 entries or have
+  // a gap/duplicate, independent of application logic correctness.
+  slotNumber Int      @map("slot_number")
+
+  stakeMinor  BigInt           @map("stake_minor")
+  feeMinor    BigInt           @map("fee_minor")
+  outcome     DrawEntryOutcome @default(PENDING)
+  payoutMinor BigInt?          @map("payout_minor")
+
+  // Client-supplied — makes "place entry" safe to retry on a double-tap.
+  idempotencyKey String   @unique @map("idempotency_key")
+
+  enteredAt DateTime  @default(now()) @map("entered_at")
+  settledAt DateTime? @map("settled_at")
+
+  @@unique([roundId, slotNumber])
+  @@index([outcome, settledAt]) // the "which payouts are still outstanding" query
+  @@map("draw_entries")
 }
