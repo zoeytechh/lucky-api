@@ -166,3 +166,21 @@ Also deepened `/api/health` while reviewing Foundation layer 13's audit checklis
 - Render deployment in progress with the user — build fix shipped, env var configuration and (possibly) `prisma migrate deploy` against whatever database Render points at are the likely next steps.
 
 **Next:** finish the live manual test (user + a friend as real entrants completing round 167), then M7 — Paystack deposits, the first milestone where real money can enter the system.
+
+---
+
+## 2026-10-06 — First real deployment: Vercel (`lucky`) + Render (`lucky-api`)
+
+Live at `lucky-tan-ten.vercel.app` / `lucky-api-0hbe.onrender.com` by the end of this session. Three real deploy issues found and fixed, each diagnosed from actual evidence (response headers, the live JS bundle) rather than guessed at:
+
+1. **Render build failure:** `src/generated/prisma` is gitignored, so a fresh clone has no Prisma client at all — surfaced as a wall of seemingly-unrelated TypeScript errors (missing module, implicit `any`, `string|null` mismatches). Reproduced locally by deleting the generated client and rebuilding, which confirmed all of it traced back to the one missing step. Fixed: `prisma generate` now runs as part of `npm run build`, not left to an assumed postinstall hook.
+2. **Cross-domain refresh cookie:** `SameSite=Lax` never sends on a cross-site `fetch()` — fine in local dev (same "site" despite different ports), broken the moment client and API live on genuinely different domains (Vercel vs Render). Fixed: `SameSite=None` + `Secure` in production, verified the local-dev cookie (`Lax`, no `Secure`) was byte-for-byte unchanged after the change.
+3. **CORS misconfigured, then a PWA cache gotcha on top of it:** `CLIENT_ORIGIN` wasn't set on Render at first (confirmed directly — `curl`'d the live health endpoint and read `access-control-allow-origin: http://localhost:5173` straight off the response). After setting it correctly, the user still saw the identical `localhost:4000` CORS error on both mobile and their own laptop Chrome. Diagnosed by fetching the actual deployed JS bundle directly — it already had the correct Render URL baked in, proving the server/build side was fine. The real cause: the service worker had already cached the earlier broken build from a prior visit, and kept serving it regardless of what Vercel now had live — exactly the kind of thing a PWA's offline-first caching is designed to do, which makes a one-time cache clear (site data / cookies) necessary after a fix like this. Resolved once the user cleared it.
+
+**Open items carried forward:**
+
+- Service worker update UX — right now a fixed bug can still appear "not fixed" to a user with a stale cached version until they manually clear site data. Worth a future improvement (e.g. a visible "new version available, refresh" prompt) so this isn't a recurring support question after every deploy; not built yet.
+- `prisma migrate deploy` against Render's actual `DATABASE_URL` — not yet confirmed either way whether Render points at the same Neon database used throughout development (in which case this is moot, migrations are already applied) or a separate one (in which case it still needs doing).
+- Everything else from the previous entry still stands (Cloudinary, Termii, refresh-token grace period, project skill, Foundation audit, `DRAW_ROUND_SIZE=4` must not ship as a real default).
+
+**Next:** same as above — finish the live manual draw test, then M7.
