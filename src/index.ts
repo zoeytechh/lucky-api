@@ -2,6 +2,7 @@ import cookieParser from 'cookie-parser'
 import cors from 'cors'
 import 'dotenv/config'
 import express, { type NextFunction, type Request, type Response } from 'express'
+import { prisma } from './lib/prisma'
 import authRoutes from './routes/auth.routes'
 import profileRoutes from './routes/profile.routes'
 
@@ -16,8 +17,23 @@ app.use(
 app.use(express.json())
 app.use(cookieParser())
 
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok' })
+// Deliberately checks the database, not just that the server process is
+// up — a shallow check ("server responds") stays green even when the one
+// dependency that matters (the database) is unreachable, which is exactly
+// the failure mode that leaves an outage undetected. This is what an
+// uptime monitor should actually be pointed at.
+app.get('/api/health', async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`
+    res.json({ status: 'ok', database: 'connected', timestamp: new Date().toISOString() })
+  } catch (err) {
+    console.error('Health check: database unreachable:', err)
+    res.status(503).json({
+      status: 'error',
+      database: 'disconnected',
+      timestamp: new Date().toISOString(),
+    })
+  }
 })
 
 app.use('/api/auth', authRoutes)
