@@ -23,10 +23,18 @@ import {
 const router = Router()
 
 const REFRESH_COOKIE = 'refresh_token'
+const isProduction = process.env.NODE_ENV === 'production'
+// Local dev: client and API are different ports on localhost, which
+// browsers treat as the same "site" — Lax works fine there. Deployed:
+// the client (Vercel) and API (Render) are genuinely different domains,
+// i.e. cross-site — a Lax cookie is never sent on a cross-site fetch()
+// (only on top-level navigation), so the refresh cookie would silently
+// never reach the API at all. None is required for that to work, and
+// None requires Secure (HTTPS-only), which both platforms provide.
 const cookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
+  secure: isProduction,
+  sameSite: isProduction ? ('none' as const) : ('lax' as const),
   path: '/api/auth',
   maxAge: REFRESH_TOKEN_TTL_MS,
 }
