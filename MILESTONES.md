@@ -30,23 +30,23 @@ and the implementation plan for full technical detail on each.
       `progress.md` for four real bugs the test suite caught, including a
       finding that changes M5's design (next item).*
 
-- [ ] **M5 — Draw rounds, entries, settlement.** ⚠️ **Design needs
-      revisiting before building, per a finding from M4's concurrency
-      testing:** 50 fully-serialized transactions through one row lock
-      took ~30s end to end against live Neon. The plan's original design
-      serializes up to 1000 entries through a single round's row lock,
-      settling synchronously in the 1000th transaction — naive
-      extrapolation from the measured number suggests that could take
-      minutes, not seconds, which isn't viable for a user waiting on their
-      entry to confirm. Needs a design pass (lighter critical section?
-      external queue-based serialization instead of DB lock queuing?
-      something else?) before implementation starts, not just a bigger
-      timeout. Still the highest-risk module either way — gated by its own
-      concurrency and money-math test suite before anything is built on
-      top of it.
+- [x] **M5 — Draw rounds, entries, settlement.** Built on the
+      decide-then-pay split designed in response to M4's finding: a fast
+      lock-held "decide" step (shuffle, record outcomes, close/open
+      rounds) followed by parallel, lock-free "pay" (crediting the 501
+      winning/refunded wallets independently). 17 concurrency + money-math
+      tests, all against the live dev database. *Done 2026-10-06 — see
+      `progress.md` for the per-entry round-trip optimizations made along
+      the way and the dev-vs-production latency finding from getting the
+      slow tests green.*
 
 - [ ] **M6 — Wire the UI to real data.** Replace the static placeholder
       numbers on Draw/Wallet/Leaderboard with live data from M3–M5.
+      Direction set for this milestone: the mobile nav becomes a proper
+      slide-out/hamburger menu (not links crammed into the top bar), and
+      interactions lean on Motion throughout — draw-result reveals, page
+      transitions, tap feedback — built from the Owambe Jackpot system's
+      own motifs (gold ring, drum-spin), not generic stock animation.
 
 - [ ] **M7 — Paystack deposits.** Dedicated virtual accounts + card
       checkout, webhook-verified wallet crediting. Real money can enter

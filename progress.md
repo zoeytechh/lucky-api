@@ -108,3 +108,30 @@ This file is a running log of what's been done, in order. Each build step gets a
 - No project skill yet for running/testing either app — carried forward again, now a recurring gap worth actually fixing rather than renoting a third time.
 
 **Next:** resolve the M5 design question above, then build the draw round/entry/settlement module against whatever concurrency approach comes out of it.
+
+---
+
+## 2026-10-06 — M5: draw rounds, entries, decide-then-pay settlement
+
+- **Design confirmed before building:** decide-then-pay, as laid out in response to M4's finding — a fast lock-held "decide" step (shuffle, record outcomes, close/open rounds, no wallet touched) followed by "pay" (crediting the 501 winning/refunded wallets) running after the lock is released, as independent per-wallet-locked transactions in parallel instead of serialized through the round lock. The plan document was updated with this design before implementation started, not after.
+- **Data model:** `DrawRound` + `DrawEntry`, migrated against Neon with three hand-added constraints Prisma's schema language can't express — confirmed present in the database via direct query, not assumed from the migration SQL alone: a partial unique index (`one_open_round`, at most one OPEN round ever), and CHECK constraints bounding `entry_count` and `slot_number` to 1..1000.
+- **Settlement math made general, not hardcoded:** `refundCount = ceil((n-1)/2)` derived from the actual entry count found, rather than fixed 500/499 constants. This means the exact same code and formula run correctly at the real 1000-entry production scale and at a small `DRAW_ROUND_SIZE` used in tests (12, set in `tests/setup.ts`) — the small-scale test is genuinely exercising production logic, not a parallel test-only calculation standing in for it.
+- **Test suite:** 17 tests across `settlement.test.ts` (the decide step in isolation — partition math, payout math balancing, round state transitions) and `draw-entry.test.ts` (the full flow through real `placeEntry` calls — capacity under concurrency, overflow into the next round, idempotency replay, and real wallet balances after real parallel entries, not just entry-row bookkeeping).
+
+**Getting from "code compiles" to "17/17 green" surfaced real things, same pattern as M4:**
+
+1. **Per-entry round-trip count mattered more than expected.** The first full run of the two big entry-flow tests (12 and 17 concurrent entries) consistently hit a 75-second wall. Diagnosed, not just timed-out-and-moved-on: each entry was making ~17 sequential database round trips (lock round, check+insert entry, then three wallet movements — stake debit, fee debit, system fee credit — each itself 4-5 round trips). Cut this to ~12 via two changes: merged each idempotency check into its insert using raw `INSERT ... ON CONFLICT (idempotency_key) DO NOTHING` (one round trip instead of a separate `findUnique` before the insert — applied to both `ledger.service.postLedgerEntry` and the draw entry insert itself), and memoized the SYSTEM user's id in-process (`wallet.service.ts`) since it never changes once created, cutting a per-entry lookup to zero round trips after the first one this process ever makes.
+2. **Even after that, the same two tests still hit the wall — and this time it wasn't a bug.** Measured it directly: ~12 round trips/entry × this dev machine's actual latency to Neon's us-east-2 region (measured around 500-600ms/round trip, not the ~150-300ms assumed when the M4 timeout budgets were first set) lands right at 75s for 12-17 serialized entries. This is real network RTT from a local dev machine to a remote database region, not a correctness problem — a production deploy co-located with its database (same region) wouldn't pay this cost, the same way the smaller wallet-only tests already run fast. Addressed by sizing `vitest.config.ts`'s timeouts to match measured reality (180s/60s) rather than chasing further query-count reduction against a cost that's bounded by physical distance, not code. Worth remembering when choosing a hosting region for `lucky-api` once it's actually deployed: put it in the same region as the Neon database.
+3. **A test-isolation bug, not a product bug:** `settlement.test.ts` originally assumed it could freely create a fresh OPEN round for each test — worked in isolation, broke the moment any other test (or manual testing) had ever left a round open, which the partial unique index correctly refused. Fixed by having the test force-close whatever's currently open before creating its own isolated round — the constraint was doing exactly its job.
+
+Also deepened `/api/health` while reviewing Foundation layer 13's audit checklist (per the user's request) — it was a shallow check (server responds, nothing more), exactly the pitfall layer 13 itself warns about. Now runs `SELECT 1` and reports 503 if the database is unreachable.
+
+**Open items carried forward:**
+
+- Cloudinary and Termii accounts still needed (carried from M3).
+- Refresh-token rotation grace-period/reuse-detection (carried from M3).
+- No project skill yet for running/testing either app — carried forward a third time; genuinely worth fixing now rather than renoting again.
+- Foundation layer 13 audit (uptime monitoring, backup testing, rollback, recovery docs) scored 1/6 — paused at the user's direction to continue milestone work first; revisit once the milestones are further along, before any real deployment.
+- Deploy `lucky-api` in the same region as the Neon database once real hosting is set up — see finding #2 above.
+
+**Next:** M6 — wire the UI to real data. Direction set by the user for this milestone: mobile nav becomes a proper slide-out/hamburger menu, interactions lean on Motion throughout (draw-result reveals, transitions, tap feedback) built from the Owambe Jackpot system's own motifs, not generic animation.
