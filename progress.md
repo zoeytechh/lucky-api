@@ -344,3 +344,17 @@ useEffect(() => {
 **Open items carried forward:** unchanged (Cloudinary verification, Termii, refresh-token grace period, project skill for running/testing — now hit a sixth time, Foundation audit, `DRAW_ROUND_SIZE=4` must not ship as a real default, no admin UI for hiding comments). New: a "new version available — refresh" prompt for the PWA service worker, to stop future deploys from silently failing to reach already-visited users (flagged twice now — after the first Vercel/Render deploy session, and again here).
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
+
+---
+
+## 2026-10-07 — Splash screen: live feedback turned the facts into a numbered flow
+
+The user checked the splash screen live on Vercel (after being pointed at visiting `/` directly, logged out — `/login` is a separate top-level route that never renders `App.tsx`, so it can never show the splash, cold Render instance or not) and gave two notes: the summary should read as the actual step-by-step flow of the app, not a set of interchangeable facts: "1. fund wallet, 2. enter draw 1,200, 3. play etc" — and the text was too faint.
+
+- Replaced the single rotating `<motion.p>` line with a static `<ol>` of five real steps (fund wallet → enter the draw → round fills, winner picked live → win/refund/try again → cash out), each a numbered gold badge + bold ink text, staggered in on mount rather than swapping one at a time — a sequence reads better as a list than as a fact ticker.
+- Dropped the rotation interval entirely (`FACTS`/`factIndex`/`ROTATE_MS` all gone) — a static list doesn't need it, and it was the thing making the text feel like disconnected trivia rather than "how this app works."
+- Text went from `text-xs text-ink-muted` to `text-sm font-bold text-ink`, per the direct "bolder" feedback.
+
+Verified the same way as the first version — a Playwright run throttling `/api/auth/refresh` to hold the splash on screen, screenshotted mid-render. Both apps type-check clean; no backend changes, no new tests needed (static UI only).
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits.
