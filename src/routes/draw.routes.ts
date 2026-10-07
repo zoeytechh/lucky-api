@@ -101,35 +101,93 @@ function displayNameFor(user: { fullName: string | null; phoneNumber: string }):
   return `•••${user.phoneNumber.slice(-4)}`
 }
 
+// Shared by /recent-entries and /winners: both are numbered-page feeds
+// (not "load more" accumulation) so a far-back page is one bounded
+// request, not N pages' worth of rows sitting in memory — relevant once
+// this is doing ~100 rounds/day and history keeps growing indefinitely.
+function pagination(req: { query: Record<string, unknown> }, defaultPageSize: number) {
+  const pageSize = Math.min(Math.max(Number(req.query.pageSize) || defaultPageSize, 1), 100)
+  const page = Math.max(Number(req.query.page) || 1, 1)
+  return { page, pageSize, skip: (page - 1) * pageSize }
+}
+
 // Global feed (every user's entries, not just the caller's) so entrants
 // can see who else is in the round — used both for the small inline
-// "recent entries" widget (small `limit`) and the dedicated "view all"
-// page (larger `limit` + `offset` paging).
+// "recent entries" widget on the Draw page (page size 3, no pagination
+// controls) and the dedicated /draw/recent page (page size 20, numbered
+// pagination).
 router.get('/recent-entries', async (req, res) => {
-  const limit = Math.min(Number(req.query.limit) || 3, 100)
-  const offset = Math.max(Number(req.query.offset) || 0, 0)
+  const { page, pageSize, skip } = pagination(req, 20)
 
-  const entries = await prisma.drawEntry.findMany({
-    orderBy: { enteredAt: 'desc' },
-    take: limit,
-    skip: offset,
-    include: {
-      user: { select: { id: true, fullName: true, phoneNumber: true } },
-      round: { select: { roundNumber: true } },
-    },
-  })
+  const [entries, total] = await Promise.all([
+    prisma.drawEntry.findMany({
+      orderBy: { enteredAt: 'desc' },
+      take: pageSize,
+      skip,
+      include: {
+        user: { select: { id: true, fullName: true, phoneNumber: true } },
+        round: { select: { roundNumber: true, openedAt: true } },
+      },
+    }),
+    prisma.drawEntry.count(),
+  ])
 
   res.json({
     entries: entries.map((e) => ({
       id: e.id,
       roundId: e.roundId,
       roundNumber: e.round.roundNumber,
+      roundDate: e.round.openedAt,
       slotNumber: e.slotNumber,
       outcome: e.outcome,
       payoutMinor: e.payoutMinor?.toString() ?? null,
       enteredAt: e.enteredAt,
       user: { id: e.user.id, displayName: displayNameFor(e.user) },
     })),
+    page,
+    pageSize,
+    total,
+  })
+})
+
+// Past winners only (outcome = WON), across every round — the dedicated
+// /draw/winners page, page size 20 (same as /recent-entries), numbered
+// pagination requesting a fresh page from the backend rather than
+// accumulating everything client-side.
+router.get('/winners', async (req, res) => {
+  const { page, pageSize, skip } = pagination(req, 20)
+
+  const [entries, total] = await Promise.all([
+    prisma.drawEntry.findMany({
+      where: { outcome: 'WON' },
+      // enteredAt, not settledAt — settledAt is set by the payout step
+      // slightly after settlement and (rarely) could still be null if a
+      // payout failed outright, which would sort unpredictably.
+      orderBy: { enteredAt: 'desc' },
+      take: pageSize,
+      skip,
+      include: {
+        user: { select: { id: true, fullName: true, phoneNumber: true } },
+        round: { select: { roundNumber: true, openedAt: true } },
+      },
+    }),
+    prisma.drawEntry.count({ where: { outcome: 'WON' } }),
+  ])
+
+  res.json({
+    winners: entries.map((e) => ({
+      id: e.id,
+      roundId: e.roundId,
+      roundNumber: e.round.roundNumber,
+      roundDate: e.round.openedAt,
+      slotNumber: e.slotNumber,
+      payoutMinor: e.payoutMinor?.toString() ?? null,
+      settledAt: e.settledAt,
+      user: { id: e.user.id, displayName: displayNameFor(e.user) },
+    })),
+    page,
+    pageSize,
+    total,
   })
 })
 
