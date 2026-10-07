@@ -89,10 +89,19 @@ and the implementation plan for full technical detail on each.
 - [ ] **M9 — Daily leaderboard job.** BullMQ/Redis repeatable cron, the
       idempotent top-3 settlement and prize crediting.
 
-- [ ] **M10 — Live comment feed.** Socket.IO transport already exists
-      (pulled forward as M6.5 above) — what's left is specific to
-      comments: Redis adapter (for horizontal scaling), JWT handshake
-      auth, persistence, and rate-limited posting.
+- [x] **M10 — Live comment feed.** `DrawComment` model, an authenticated
+      `/comments` Socket.IO namespace (JWT handshake + the same mandatory-
+      avatar profile-completeness gate every other authenticated route
+      has), an 8s per-user in-memory rate limit, `GET /api/comments/recent`
+      for the one-time REST backfill, and a `CommentFeed` component on the
+      Draw page — fixed-height, scrollable, capped at the 100 most recent,
+      Motion entrance animations on each new comment. No Redis adapter:
+      same reasoning as M6.5's round-broadcast socket (Render runs a
+      single instance) — revisit only if that changes, not a gap. *Done
+      2026-10-07 — see `progress.md` for a real bug caught in the test
+      suite's own helper (an explicit `avatarUrl: null` was silently
+      replaced by a `??` fallback, meaning the first run of the
+      incomplete-profile test wasn't actually testing what it claimed).*
 
 - [ ] **M11 — Hardening.** Standing reconciliation cron, settlement
       audit-log viewer, admin tooling, rate limiting, webhook/reconciliation

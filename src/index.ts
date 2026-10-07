@@ -6,6 +6,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { prisma } from './lib/prisma'
 import { initSocket } from './realtime/socket'
 import authRoutes from './routes/auth.routes'
+import commentsRoutes from './routes/comments.routes'
 import drawRoutes from './routes/draw.routes'
 import profileRoutes from './routes/profile.routes'
 import walletRoutes from './routes/wallet.routes'
@@ -44,9 +45,10 @@ app.use('/api/auth', authRoutes)
 app.use('/api/profile', profileRoutes)
 app.use('/api/draw', drawRoutes)
 app.use('/api/wallet', walletRoutes)
+app.use('/api/comments', commentsRoutes)
 
 // Route modules are added here as each build-order step lands:
-// webhooks.routes, leaderboard.routes, comments.routes (see the plan).
+// webhooks.routes, leaderboard.routes (see the plan).
 
 // biome-ignore lint: express identifies error middleware by arity (4 args)
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {

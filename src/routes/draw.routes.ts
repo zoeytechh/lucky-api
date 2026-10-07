@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { ENTRY_COST_MINOR, FEE_MINOR, ROUND_SIZE, STAKE_MINOR, WINNER_PAYOUT_MINOR } from '../config/constants'
+import { displayNameFor } from '../lib/displayName'
 import { prisma } from '../lib/prisma'
 import { requireAuth, requireCompleteProfile } from '../middleware/auth'
 import { AlreadyEnteredError, InsufficientBalanceError, placeEntry } from '../services/draw.service'
@@ -91,15 +92,6 @@ router.get('/entries', async (req, res) => {
     })),
   })
 })
-
-// Masks everything but the last 4 digits so a public feed ("who's
-// entering") never exposes a full phone number — fullName is optional at
-// signup (only avatarUrl is gated by requireCompleteProfile), so most
-// entrants fall back to this.
-function displayNameFor(user: { fullName: string | null; phoneNumber: string }): string {
-  if (user.fullName) return user.fullName
-  return `•••${user.phoneNumber.slice(-4)}`
-}
 
 // Shared by /recent-entries and /winners: both are numbered-page feeds
 // (not "load more" accumulation) so a far-back page is one bounded

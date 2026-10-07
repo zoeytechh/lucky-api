@@ -267,3 +267,27 @@ Both are UI-only; no backend logic changed, no new tests needed (nothing here to
 **Open items carried forward:** unchanged from the previous entry (Cloudinary verification, Termii, refresh-token grace period, project skill, Foundation audit, `DRAW_ROUND_SIZE=4` must not ship as a real default).
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
+
+---
+
+## 2026-10-07 — M10: live comment feed, pulled forward (same move as M6.5)
+
+The user asked for a comment section — this is M10 from the original plan, pulled forward the same way the live draw reveal (M6.5) pulled forward its Socket.IO infrastructure ahead of schedule. Since that infrastructure already exists, this landed as additive work on top of it, not a new system.
+
+- **Data model:** `DrawComment` (`user_id`, `body`, `is_hidden` default false — moderation-ready even though no admin UI exists yet to set it, matching the original plan's §5a), migrated clean.
+- **`comment.service.ts`:** 280-char validation, and an 8-second per-user post cooldown via a plain in-memory `Map` — same reasoning as `realtime/socket.ts`'s "no Redis adapter" decision (Render runs a single instance; revisit only if that changes). `displayNameFor` (masked-phone-or-fullName) got pulled out of `draw.routes.ts` into a shared `lib/displayName.ts` so comments and the draw feeds use the exact same identity-masking logic rather than two copies drifting apart.
+- **Realtime:** a new authenticated `/comments` Socket.IO namespace (a namespace, not a second server — shares the same port/instance) — unlike the default namespace used for round progress/settlement (deliberately public, no per-user identity needed), posting a comment needs a real identity to attribute and rate-limit. Handshake middleware requires a valid JWT *and* enforces the same mandatory-avatar profile-completeness gate every other authenticated route has (`requireCompleteProfile`'s own logic, SYSTEM/ADMIN exempt) — there's no Express middleware layer on a socket connection, so this check lives directly in the namespace's `use()` middleware instead.
+- **REST:** `GET /api/comments/recent` — one-time backfill for a client that just connected, capped at 100; everything after that arrives live over the socket (`comment:new`), never polled.
+- **Frontend:** `CommentFeed.tsx` on the Draw page — fixed-height (`h-[320px]`), scrollable, newest-first, capped at 100 client-side to match the backend cap. Each incoming comment (including the poster's own, via the same broadcast everyone gets — no optimistic local insert, so nothing to reconcile) animates in via Motion (`AnimatePresence` + spring transition). `useCommentSocket.ts` connects with `auth` as a function (not a static object) so a reconnect re-reads whatever access token is current rather than replaying a stale one.
+- **Dummy content:** `scripts/seed-dummy-comments.ts` seeds 7 realistic comments under fake accounts with real names, so the feed isn't empty on first load. Dev-only, same pattern as `seed-filler-entries.ts`.
+- **Also landed:** `PartyMascot.tsx` — a small animated figure (gold, continuous gentle bounce+sway via Motion, not tied to any app state) next to the LUCKY wordmark in the nav, matching the "Owambe" (Nigerian party) framing the visual identity is already built around, per the user's request for the nav to have "automatic movement" animation.
+
+**Testing:** new `tests/integration/comments-socket.test.ts`, same real-infrastructure pattern as `draw-socket.test.ts` — boots an actual `http.Server` + `initSocket()`, connects real `socket.io-client`s. Covers: a connection with no token (and one from a user with an incomplete profile) both get rejected; a posted comment broadcasts to every connected client (not just acks the sender) and is actually persisted; an empty or over-280-char comment is rejected without writing a row; a second post from the same user inside the cooldown window gets `RATE_LIMIT`, not silently queued or dropped.
+
+**A real bug the test suite caught in its own helper, not the feature:** the first draft of `createUser({ avatarUrl })` defaulted via `opts.avatarUrl ?? 'https://example.com/a.png'` — `??` treats an explicit `avatarUrl: null` the same as "not provided" and falls back to the default, so the incomplete-profile test was accidentally creating a user *with* a real avatar and asserting a rejection that had nothing to do with profile completeness. Caught because the test failed with the connection unexpectedly succeeding. Fixed by switching to default-parameter destructuring (`{ avatarUrl = '...' }`), which only applies on `undefined`, not `null`. Worth remembering for any future test helper with an optional-but-nullable field.
+
+Full suite after the fix: **24/24 passing** (6 files). Both apps build clean.
+
+**Open items carried forward:** unchanged (Cloudinary verification, Termii, refresh-token grace period, project skill, Foundation audit, `DRAW_ROUND_SIZE=4` must not ship as a real default). New, deliberately deferred: no admin UI yet for hiding a comment (`is_hidden` exists in the schema for exactly this, per the original plan — building the UI isn't blocking anything else, so it's tracked here rather than built now).
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits.

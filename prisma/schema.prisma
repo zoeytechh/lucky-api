@@ -41,6 +41,7 @@ model User {
   refreshTokens RefreshToken[]
   wallet        Wallet?
   drawEntries   DrawEntry[]
+  drawComments  DrawComment[]
 
   @@map("users")
 }
@@ -197,4 +198,23 @@ model DrawEntry {
   @@unique([roundId, slotNumber])
   @@index([outcome, settledAt]) // the "which payouts are still outstanding" query
   @@map("draw_entries")
+}
+
+// A general live feed (not tied to a specific round) — users sharing
+// their experience, visible to everyone. Posting happens over Socket.IO
+// (see realtime/socket.ts's /comments namespace), not a plain POST route
+// — this REST-less-write shape matches the original comment-feed plan.
+// isHidden is moderation-ready (soft-delete) even though no admin UI
+// exists yet to set it — deliberately, so that UI doesn't need a schema
+// change later; see the plan's §5a.
+model DrawComment {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id])
+  body      String
+  isHidden  Boolean  @default(false) @map("is_hidden")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([isHidden, createdAt])
+  @@map("draw_comments")
 }
