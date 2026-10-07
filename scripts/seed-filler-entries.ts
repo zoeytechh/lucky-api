@@ -15,7 +15,12 @@ async function main() {
 
   for (let i = 0; i < count; i++) {
     const phone = `+1FILLER${randomUUID()}`
-    const user = await prisma.user.create({ data: { phoneNumber: phone } })
+    // A real fullName (not left null) so this filler shows up in the
+    // recent-entries feed with a readable name instead of falling back
+    // to a masked phone number — purely cosmetic for manual testing.
+    const user = await prisma.user.create({
+      data: { phoneNumber: phone, fullName: `Filler ${i + 1}` },
+    })
     await runInTransaction((tx) =>
       credit(tx, {
         userId: user.id,
