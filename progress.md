@@ -358,3 +358,17 @@ The user checked the splash screen live on Vercel (after being pointed at visiti
 Verified the same way as the first version — a Playwright run throttling `/api/auth/refresh` to hold the splash on screen, screenshotted mid-render. Both apps type-check clean; no backend changes, no new tests needed (static UI only).
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
+
+---
+
+## 2026-10-07 — Skippable intro screen before the phone/OTP form
+
+The user asked for the splash screen's step list to double as a real intro screen, shown for first-time visitors and for anyone whose session expired and got bounced back to `/login` — both land there with zero context otherwise — with a way to skip past it.
+
+- **New `LoginIntro`:** the same wordmark/mascot/step-list layout as `SplashLoader`, minus the loading icon (this screen isn't waiting on anything — it's deliberate, read-or-skip), plus a single `SKIP` button that advances past it.
+- **Extracted `AppFlowSteps`** out of `SplashLoader` — the numbered step list (fund wallet → enter the draw → round fills → win/refund → cash out) is now a shared component instead of being duplicated between the two screens, so they can't quietly drift into describing the app two different ways.
+- **`Login.tsx`:** `step` state gained a third value, `'intro'`, and now starts there instead of on `'phone'`. No persisted "already seen it" flag — the intro shows on every fresh mount of `Login`, which naturally covers both a genuine first-time visit and a session-expiry redirect back to `/login` without needing to tell those two cases apart in code; skipping is purely local state, so it reappears on the next visit.
+
+Verified live in a real browser: `/login` shows the intro (phone input not yet in the DOM), `SKIP` reveals the phone form, and navigating to `/login` again afterward (simulating the session-expired redirect) shows the intro again rather than remembering the skip. Both apps type-check clean; no backend changes, no new tests needed (static UI + local component state only).
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits.
