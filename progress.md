@@ -372,3 +372,29 @@ The user asked for the splash screen's step list to double as a real intro scree
 Verified live in a real browser: `/login` shows the intro (phone input not yet in the DOM), `SKIP` reveals the phone form, and navigating to `/login` again afterward (simulating the session-expired redirect) shows the intro again rather than remembering the skip. Both apps type-check clean; no backend changes, no new tests needed (static UI + local component state only).
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
+
+---
+
+## 2026-10-07 — Service worker: a visible "update available" prompt, and two more reports chased down
+
+The user reported two more things after logging out and back in: no onboarding/intro screen, and the OTP rate-limit countdown firing on what felt like a single fresh click. Reproduced the exact real flow (login → Profile → tap the real Log out button → redirected to `/login`) in a live browser rather than guessing — the intro showed correctly every time, both locally and in the already-deployed bundle (confirmed by pulling the live Vercel JS and grepping for the intro's own strings). So the rate-limit report turned out not to be a bug either, once asked directly: the 60-second cooldown is tracked server-side by time since the last SMS sent to that phone number, not per login attempt — logging out and back in within a minute of the previous login's own OTP request will correctly still be in cooldown, no matter how fresh that click feels from the user's side.
+
+That's now three separate reports in one session (this one, the OTP timer before it, and the splash screen before that) where the code and the deploy were both already correct, and the actual cause was the PWA's service worker quietly serving an old cached bundle with zero signal that anything was stale. Rather than keep explaining that same gap after each report, built the fix it's been missing: a real "new version available" prompt.
+
+- **`vite.config.ts`:** `registerType` changed from `'autoUpdate'` to `'prompt'` — autoUpdate reloads the page the instant a new service worker takes control, which is invisible and only as reliable as whenever the browser happens to re-check for an update (typically on the next full navigation, not spontaneously while the SPA stays open) — exactly the kind of timing that made every report above look like a code bug instead of a cache one.
+- **New `UpdatePrompt.tsx`:** uses vite-plugin-pwa's `useRegisterSW()` hook (`virtual:pwa-register/react` — added `vite-plugin-pwa/client` to `tsconfig.app.json`'s `types` so TypeScript resolves the virtual module) and renders a small dismissed-by-action "A new version of Lucky is ready — Refresh" banner the moment `needRefresh` flips true. Mounted in `main.tsx` at the root, outside the router entirely, so it's visible on `/login` too — the exact route every one of these three reports happened on.
+- Verified with a real production build (`npm run build`, not just `tsc`/dev mode — the PWA plugin only fully runs in a real build): `dist/sw.js` and the Workbox runtime both generate correctly, and a `vite preview` smoke test confirmed the service worker actually registers and the intro screen still renders with no new console errors (the one CORS error seen was from testing the preview build against the real production API from `localhost:4173`, not an app issue).
+
+**Also confirmed, no changes needed:** the user separately described wanting the Past Winners and Recent Entries lists capped at 20 with backend-driven pagination (Next requests the next 20 from the server, nothing accumulated client-side) — checked `Winners.tsx`/`RecentEntries.tsx`/`Paginator.tsx`/`draw.routes.ts` and this is exactly what was already built in the 2026-10-07 "Reveal reliability, pagination, past winners" session above; nothing to do here.
+
+**Open items carried forward:** unchanged, minus the "new version available" prompt item from two entries above — now built. Still open: Cloudinary verification, Termii, refresh-token grace period, project skill for running/testing, Foundation audit, `DRAW_ROUND_SIZE=4` must not ship as a real default, no admin UI for hiding comments.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits.
+
+---
+
+## 2026-10-07 — SplashLoader: dropped the step list, reload was showing it everywhere
+
+Immediate follow-up report: reloading the page from anywhere in the app — not just landing fresh — was showing the app-flow step list, which read as the onboarding screen resurfacing for someone already logged in. Root cause was obvious once named: `SplashLoader` covers `App.tsx`'s `status === 'loading'` gate, which fires on *every* page reload while the silent refresh-token check is in flight, not just a genuine first visit — and it had been given the same `AppFlowSteps` list as `LoginIntro` a few entries back. Removed it; `SplashLoader` is back to just the wordmark, mascot, and spinner. The step list now belongs only to `LoginIntro`'s deliberate one-time "about to log in" screen.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits.
