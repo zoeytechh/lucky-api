@@ -407,4 +407,16 @@ The user pointed out "ENTER — ₦1,200" doesn't tell anyone ₦200 of that is 
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
 
+---
+
+## 2026-10-07 — New: a How to Play page
+
+The user asked for a standing page explaining the game, not just the one-time `LoginIntro`.
+
+- **New `HowToPlay.tsx`:** entry cost breakdown, how the single post-fill shuffle decides winner/refunded/lost (with the real counts and amounts, not fixed 500/499/₦500,000 text — computed from `GET /api/draw/current`'s `capacity` the same `ceil`/`floor` way `settlement.service.ts` itself does), the live reveal, wallet funding/cashout, and the daily leaderboard. Fetches the round numbers from the backend rather than hardcoding them, same reasoning as the Enter button's fee caption — verified locally against the `DRAW_ROUND_SIZE=4` dev override and it correctly showed 4/₦2,000/₦1,000 throughout, not production's 1,000/₦500,000/₦1,000, confirming it's actually reading live data rather than baked-in copy.
+- Reachable from the top nav and mobile menu (`How to Play`), and a new `How it works` link under the Draw page's own round-mechanics summary paragraph — the moment someone's most likely to want it.
+- Also added, on request: a hook tagline under the `LUCKY` wordmark on `LoginIntro` — "Stand a chance to win ₦500,000 with just ₦1,000," the two amounts picked out in the primary gold.
+
+Verified live in a browser: nav link present and routes correctly, the page renders with real dev-environment numbers, the Draw-page link navigates through. Both apps type-check clean; no backend changes, no new tests needed (frontend-only, reads an existing endpoint).
+
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
