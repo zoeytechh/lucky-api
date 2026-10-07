@@ -423,7 +423,9 @@ Follow-up on request: the tagline was too heavy at `font-display text-xl upperca
 
 A second follow-up caught a real accuracy gap: step 4 of `AppFlowSteps` read "Win ₦500,000, get refunded, or try again" — which never actually says some entrants lose their stake outright, inconsistent with the Draw page's own stats row and the How to Play page, both of which show a "lose" outcome honestly. Proposed three rewrites, the user picked and polished one: "Win ₦500,000, get refunded ₦1,000, or lose it — then try again."
 
-A third pass on the same line: the user wanted all three outcomes explicit rather than one trailing "then try again" that read as applying only to the lose branch. Final wording, spelled out per their exact structure: **"Win ₦500,000, get refunded ₦1,000 and try again, or lose it and try again."**
+A third pass on the same line: the user wanted all three outcomes explicit rather than one trailing "then try again" that read as applying only to the lose branch. Wording became "Win ₦500,000, get refunded ₦1,000 and try again, or lose it and try again."
+
+A fourth pass: that could still read as "get refunded" being the default/likely outcome rather than one of three equally-weighted branches. Offered several either/or-style rewrites; settled on **"You'll either win ₦500,000, get refunded ₦1,000, or lose it — then try again"** — leading with "either" makes the three-way split explicit from the first word, so no branch reads as the assumed default.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
 
