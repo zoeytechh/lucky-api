@@ -1,5 +1,6 @@
 import type { Prisma } from '../generated/prisma/client'
 import { STAKE_MINOR, WINNER_PAYOUT_MINOR } from '../config/constants'
+import { displayNameFor } from '../lib/displayName'
 import { prisma, runInTransaction } from '../lib/prisma'
 import { secureShuffle } from './rng'
 import { credit } from './wallet.service'
@@ -18,12 +19,17 @@ export async function decideSettlement(tx: Prisma.TransactionClient, roundId: st
   const entries = await tx.drawEntry.findMany({
     where: { roundId },
     orderBy: { slotNumber: 'asc' },
-    select: { id: true, slotNumber: true },
+    select: { id: true, slotNumber: true, userId: true },
   })
 
   const shuffled = secureShuffle(entries.map((e) => e.id))
   const winnerId = shuffled[0]
-  const winnerSlotNumber = entries.find((e) => e.id === winnerId)!.slotNumber
+  const winnerEntry = entries.find((e) => e.id === winnerId)!
+  const winnerSlotNumber = winnerEntry.slotNumber
+  const winnerUser = await tx.user.findUniqueOrThrow({
+    where: { id: winnerEntry.userId },
+    select: { fullName: true, phoneNumber: true, avatarUrl: true },
+  })
 
   // Derived from the actual entry count found, not a hardcoded 500/499 —
   // this is what lets the exact same code and formula run correctly at
@@ -79,6 +85,8 @@ export async function decideSettlement(tx: Prisma.TransactionClient, roundId: st
   return {
     winnerEntryId: winnerId,
     winnerSlotNumber,
+    winnerDisplayName: displayNameFor(winnerUser),
+    winnerAvatarUrl: winnerUser.avatarUrl,
     refundCount: refundedIds.length,
     lossCount: lostIds.length,
     nextRoundId: nextRound.id,

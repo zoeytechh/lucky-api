@@ -55,6 +55,8 @@ export type PlaceEntryResult = {
   roundNumber: number
   roundSettled: boolean
   winnerSlotNumber?: number
+  winnerDisplayName?: string
+  winnerAvatarUrl?: string | null
   nextRoundId?: string
   nextRoundNumber?: number
 }
@@ -182,6 +184,8 @@ async function placeEntryOnce(userId: string, idempotencyKey: string): Promise<I
       roundNumber: round.round_number,
       roundSettled,
       winnerSlotNumber: settlement?.winnerSlotNumber,
+      winnerDisplayName: settlement?.winnerDisplayName,
+      winnerAvatarUrl: settlement?.winnerAvatarUrl,
       nextRoundId: settlement?.nextRoundId,
       nextRoundNumber: settlement?.nextRoundNumber,
       isReplay: false,
@@ -243,6 +247,8 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
       roundId: result.roundId,
       roundNumber: result.roundNumber,
       winnerSlotNumber: result.winnerSlotNumber,
+      winnerDisplayName: result.winnerDisplayName,
+      winnerAvatarUrl: result.winnerAvatarUrl,
       nextRoundId: result.nextRoundId,
       nextRoundNumber: result.nextRoundNumber,
     })

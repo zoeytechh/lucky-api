@@ -313,3 +313,34 @@ Full suite after the fix: **24/24 passing** (6 files). Both apps build clean.
 **Open items carried forward:** unchanged (Cloudinary verification, Termii, refresh-token grace period, project skill, Foundation audit, `DRAW_ROUND_SIZE=4` must not ship as a real default). New, deliberately deferred: no admin UI yet for hiding a comment (`is_hidden` exists in the schema for exactly this, per the original plan — building the UI isn't blocking anything else, so it's tracked here rather than built now).
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
+
+---
+
+## 2026-10-07 — Fixed the draw reveal freeze, added a winner modal, verified the OTP timer, built a splash screen
+
+The user reported two issues from live use: the draw screen gets stuck on the rolling numbers once a round starts, never showing who won even though recent entries clearly update behind it; and the OTP rate-limit screen gives no countdown, leaving a rate-limited user stuck with no sense of when they can retry.
+
+**Root cause of the freeze, found by actually reproducing it, not guessing from the code:** stood up both apps locally against the live dev Neon database and drove the Draw page with a throwaway Playwright harness (still no project skill for this — the same gap noted at the end of nearly every session above, hit again). First reproduction attempt was invalid and worth remembering: filling a round via `seed-filler-entries.ts` calls `placeEntry()` directly in its own standalone process, which never calls `initSocket()` — so `tryGetIo()` returns `null` there and nothing ever broadcasts, regardless of what's wrong (or not) in the real server. Switched to placing filler entries over real HTTP against the actual running dev server (the same process `initSocket()` runs in), which is what actually exercises the broadcast path.
+
+With that, the bug reproduced immediately and clearly: `Draw.tsx`'s live-progress effect depended on `round` while also calling `setRound` inside itself —
+
+```js
+useEffect(() => {
+  if (!progress || !round || progress.roundId !== round.roundId) return
+  setRound((r) => (r ? { ...r, entryCount: progress.entryCount } : r))
+}, [progress, round])
+```
+
+— so the instant the first `round:progress` socket event of the round arrived, it looped: `setRound` changes `round`'s identity even when `entryCount` is unchanged, which re-triggers the effect (a dependency), which calls `setRound` again, forever. Confirmed directly — 860+ "Maximum update depth exceeded" console errors logged across a single round, and the winner never revealed even 70+ seconds past the maximum 60s suspense window. Fixed by moving the staleness check inside the updater (bailing out with the *same* object reference when nothing actually changed) and dropping `round` from the dependency array, so the effect only re-runs once per genuine socket event. Reran the identical scenario after the fix: zero loop errors, correct monotonic progress, winner revealed on schedule.
+
+**New: `WinnerModal`** — the user asked for a proper reveal on top of the fix: the app's own mascot, falling ribbons in the brand palette, and the actual winner's photo, name, slot, and prize, dismissible (backdrop tap, ✕, or the "NICE!" button; auto-dismisses after 8s otherwise). Needed the winner's identity to actually reach the client, which it never had before (only `winnerSlotNumber` existed anywhere) — `settlement.service.decideSettlement` now resolves the winning entry's `userId` to a user record and returns `winnerDisplayName`/`winnerAvatarUrl` (reusing `displayNameFor`'s existing masked-phone-or-fullName logic) alongside the slot number it already returned; `draw.service.ts` threads both through `PlaceEntryResult` into the `round:settled` socket broadcast and the HTTP response, the same way every other settlement field already flows. Frontend keeps the snapshot that opens the modal in its own state (`winnerModalData`), separate from `pendingSettlement`, so the modal's own dismiss lifecycle doesn't get tangled with the queue-draining logic that advances to the next round.
+
+**OTP timer — already fixed, not by this session.** Checked the code before touching anything: `Login.tsx`'s `applyError` already reads `retryAfterSeconds` off an `OTP_RATE_LIMIT` error and starts the countdown, and the backend already returns it (`otp.service.ts`'s `OtpRateLimitError`). Verified live rather than assuming: curled the production API directly (`retryAfterSeconds: 60` on the second request) and pulled the deployed Vercel JS bundle (contains the `retryAfterSeconds`/`WAIT ${s}s` code), then drove it in a real browser — "WAIT 60s" ticked down to "WAIT 57s" correctly. The fix was real and live; if the user was still seeing it stuck, the far more likely explanation is the PWA caching gap already flagged after the first Render/Vercel deploy session — no "new version available" prompt exists, so a previously-visited browser can keep serving an old cached bundle after a deploy with no signal to the user that anything changed. Flagged back to the user, not built (not asked for yet).
+
+**New: `SplashLoader`** — `App.tsx`'s top-level `status === 'loading'` gate (first paint, or a cold Render instance waking up) was a bare spinner with no branding and no nav/mascot at all, which the user flagged directly. Replaced with the LUCKY wordmark + `PartyMascot`, the existing ring spinner, and a rotating one-line fact underneath. First draft only rotated draw-mechanic facts; the user asked directly whether it actually summarizes the app — it didn't — so broadened it to lead with a real one-line summary of what Lucky *is*, then touch every core feature in turn (draw, refund, wallet funding, the live reveal, the leaderboard, the comment feed), not just the draw math. Verified by throttling the `/api/auth/refresh` call in a Playwright run and screenshotting mid-splash — wordmark, spinner, and fact rotation all confirmed visually.
+
+**Testing:** full backend suite re-run after the `settlement.service.ts`/`draw.service.ts` changes — **24/24 passing**, both apps type-check clean. The draw-reveal fix and the winner modal were both verified against the real running dev server and a real browser, not just inferred from the diff — same discipline as every milestone above, applied here to a bug-fix-plus-feature session instead of a new milestone.
+
+**Open items carried forward:** unchanged (Cloudinary verification, Termii, refresh-token grace period, project skill for running/testing — now hit a sixth time, Foundation audit, `DRAW_ROUND_SIZE=4` must not ship as a real default, no admin UI for hiding comments). New: a "new version available — refresh" prompt for the PWA service worker, to stop future deploys from silently failing to reach already-visited users (flagged twice now — after the first Vercel/Render deploy session, and again here).
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits.
