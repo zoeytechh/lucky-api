@@ -61,7 +61,9 @@ router.post('/otp/request', async (req, res) => {
     res.json({ sent: true })
   } catch (err) {
     if (err instanceof OtpRateLimitError) {
-      return res.status(429).json({ message: err.message, code: 'OTP_RATE_LIMIT' })
+      return res
+        .status(429)
+        .json({ message: err.message, code: 'OTP_RATE_LIMIT', retryAfterSeconds: err.retryAfterSeconds })
     }
     throw err
   }
