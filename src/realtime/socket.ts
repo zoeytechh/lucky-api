@@ -14,10 +14,11 @@ type PostAck = (res: { ok: true } | { ok: false; code: string; message: string }
 
 /**
  * Shared by every authenticated namespace (/comments, /wallet) — same
- * JWT handshake + mandatory-avatar gate as requireCompleteProfile on the
- * REST side, just with no Express middleware layer to put it in, so it
- * lives here instead. Centralized so the two namespaces can't drift into
- * two slightly different versions of "who's allowed to connect."
+ * JWT handshake + mandatory-avatar-and-name gate as requireCompleteProfile
+ * on the REST side, just with no Express middleware layer to put it in,
+ * so it lives here instead. Centralized so the two namespaces can't
+ * drift into two slightly different versions of "who's allowed to
+ * connect."
  */
 function authenticateSocket(socket: Socket, next: (err?: Error) => void) {
   ;(async () => {
@@ -27,10 +28,10 @@ function authenticateSocket(socket: Socket, next: (err?: Error) => void) {
       const payload = verifyAccessToken(token)
       const user = await prisma.user.findUnique({
         where: { id: payload.sub },
-        select: { role: true, avatarUrl: true },
+        select: { role: true, avatarUrl: true, fullName: true },
       })
       if (!user) return next(new Error('unauthorized'))
-      if (user.role === 'USER' && !user.avatarUrl) {
+      if (user.role === 'USER' && (!user.avatarUrl || !user.fullName)) {
         return next(new Error('profile incomplete'))
       }
       socket.data.userId = payload.sub

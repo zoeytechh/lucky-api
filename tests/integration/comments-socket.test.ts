@@ -44,10 +44,16 @@ describe('comments realtime namespace', () => {
   // Default-parameter destructuring, not `??` — `??` treats an explicit
   // `avatarUrl: null` the same as "not provided" and silently falls back
   // to the default, which is exactly wrong for the incomplete-profile
-  // test case below (it needs a real null to reach the DB).
-  async function createUser({ avatarUrl = 'https://example.com/a.png' }: { avatarUrl?: string | null } = {}) {
+  // test case below (it needs a real null to reach the DB). fullName
+  // defaults for the same reason now that requireCompleteProfile/
+  // authenticateSocket require both — without it every "complete
+  // profile" test user here would itself fail the real gate.
+  async function createUser({
+    avatarUrl = 'https://example.com/a.png',
+    fullName = 'Test User',
+  }: { avatarUrl?: string | null; fullName?: string | null } = {}) {
     const user = await prisma.user.create({
-      data: { phoneNumber: `+1TEST${randomUUID()}`, avatarUrl },
+      data: { phoneNumber: `+1TEST${randomUUID()}`, avatarUrl, fullName },
     })
     trackedUserIds.push(user.id)
     return user
