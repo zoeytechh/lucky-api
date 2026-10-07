@@ -50,11 +50,21 @@ app.use('/api/comments', commentsRoutes)
 // Route modules are added here as each build-order step lands:
 // webhooks.routes, leaderboard.routes (see the plan).
 
+// Every *expected* failure (insufficient balance, bad OTP, validation,
+// etc.) is already caught and given its own friendly message + code at
+// the route itself — this middleware only ever sees genuinely
+// unexpected crashes. Logged in full server-side (so it's still
+// debuggable), but never echoed to the client: an internal exception's
+// own message is an implementation detail — occasionally a literal
+// JS/Node error string like "Do not know how to serialize a BigInt",
+// seen live — not something a user should read, and not guaranteed
+// safe to expose (could as easily carry a query fragment or a file
+// path). A generic message + code is what the client actually needs:
+// something ErrorAlert can show instead of a raw dump.
 // biome-ignore lint: express identifies error middleware by arity (4 args)
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err)
-  const message = err instanceof Error ? err.message : 'Internal server error'
-  res.status(500).json({ message })
+  res.status(500).json({ message: 'Something went wrong. Please try again.', code: 'INTERNAL_ERROR' })
 })
 
 // A plain http.Server wrapping Express, not app.listen() directly —

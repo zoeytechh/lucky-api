@@ -279,5 +279,23 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
     }
   }
 
-  return result
+  // Explicit public shape, not the raw internal `result` — it carries
+  // isReplay and entrantBalanceMinor (a real bigint), neither meant to
+  // leave this function. Returning `result` directly here previously let
+  // that bigint reach res.json() in draw.routes.ts, which throws ("Do
+  // not know how to serialize a BigInt") since JSON has no bigint
+  // representation — broke every single non-replay entry the moment
+  // entrantBalanceMinor started being set, caught live.
+  return {
+    entryId: result.entryId,
+    slotNumber: result.slotNumber,
+    roundId: result.roundId,
+    roundNumber: result.roundNumber,
+    roundSettled: result.roundSettled,
+    winnerSlotNumber: result.winnerSlotNumber,
+    winnerDisplayName: result.winnerDisplayName,
+    winnerAvatarUrl: result.winnerAvatarUrl,
+    nextRoundId: result.nextRoundId,
+    nextRoundNumber: result.nextRoundNumber,
+  }
 }
