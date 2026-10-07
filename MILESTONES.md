@@ -105,7 +105,11 @@ and the implementation plan for full technical detail on each.
 
 - [ ] **M11 — Hardening.** Standing reconciliation cron, settlement
       audit-log viewer, admin tooling, rate limiting, webhook/reconciliation
-      alerting, real PWA icon artwork (currently placeholders).
+      alerting, real PWA icon artwork (currently placeholders). Also now:
+      a dedicated test database — `npm test` currently shares the live
+      Neon database with dev *and* production, and on 2026-10-08 a
+      test's own cleanup logic force-settled a real, live production
+      round mid-session (caught and recovered by hand; see progress.md).
 
 - [ ] **M12 — Phase-2 compliance.** BVN/NIN KYC flow, KYC-tiered
       withdrawal limits. Required before scaling past a pilot audience —
