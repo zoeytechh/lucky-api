@@ -397,4 +397,6 @@ That's now three separate reports in one session (this one, the OTP timer before
 
 Immediate follow-up report: reloading the page from anywhere in the app — not just landing fresh — was showing the app-flow step list, which read as the onboarding screen resurfacing for someone already logged in. Root cause was obvious once named: `SplashLoader` covers `App.tsx`'s `status === 'loading'` gate, which fires on *every* page reload while the silent refresh-token check is in flight, not just a genuine first visit — and it had been given the same `AppFlowSteps` list as `LoginIntro` a few entries back. Removed it; `SplashLoader` is back to just the wordmark, mascot, and spinner. The step list now belongs only to `LoginIntro`'s deliberate one-time "about to log in" screen.
 
+Also, on request: renamed the intro's `SKIP` button to `LET'S GO` — "skip" implied the screen was something worth avoiding, when it's just a one-time intro. Renamed `onSkip` to `onContinue` throughout `LoginIntro`/`Login.tsx` to match.
+
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
