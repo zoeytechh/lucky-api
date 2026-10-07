@@ -254,3 +254,16 @@ Also answered a standing question from the user about why they keep seeing OTP p
 **Open items carried forward:** same as the previous entry (Cloudinary verification, Termii, refresh-token grace period, project skill, Foundation audit, `DRAW_ROUND_SIZE=4` must not ship as a real default).
 
 **Next:** finish the live manual draw test now that the reveal is actually reliable for the entrant who completes the round, then M7.
+
+---
+
+## 2026-10-07 — Two small UI fixes: Past Winners CTA, OTP resend
+
+- **"View past winners" was an 11px text link** — easy to miss entirely on the Draw page. Replaced with a full-width card: a gold trophy icon in a filled badge, a one-line subtitle, hover state — matches the visual weight the other actions on that page already have. New `TrophyIcon` added to the shared icon set (`lucky/src/components/icons.tsx`).
+- **OTP rate-limit confusion:** the user hit "too many requests, please wait" when tapping Send Code. That's the backend's existing 60-second per-phone cooldown (`otp.service.ts`'s `REQUEST_COOLDOWN_MS`) working exactly as designed — not a bug. The actual gap: the code-entry screen had no resend affordance at all; the only way to retry was "Use a different number," which resets the whole flow back to square one. Added a proper **Resend code** button with a visible countdown (`Resend code in 47s`, mirrored client-side from the same 60s window — cosmetic only, the server is still the real guard) that enables itself once the wait is over.
+
+Both are UI-only; no backend logic changed, no new tests needed (nothing here touches money, settlement, or auth correctness — just surfaces existing server behavior properly). Both apps build clean.
+
+**Open items carried forward:** unchanged from the previous entry (Cloudinary verification, Termii, refresh-token grace period, project skill, Foundation audit, `DRAW_ROUND_SIZE=4` must not ship as a real default).
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits.
