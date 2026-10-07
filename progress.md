@@ -421,6 +421,8 @@ Verified live in a browser: nav link present and routes correctly, the page rend
 
 Follow-up on request: the tagline was too heavy at `font-display text-xl uppercase` — Anton is built for short punchy labels, not a full sentence. Switched to the body font (Nunito Sans) at `text-base`, extrabold weight, sentence case, width-capped to wrap into two lines.
 
+A second follow-up caught a real accuracy gap: step 4 of `AppFlowSteps` read "Win ₦500,000, get refunded, or try again" — which never actually says some entrants lose their stake outright, inconsistent with the Draw page's own stats row and the How to Play page, both of which show a "lose" outcome honestly. Proposed three rewrites, the user picked and polished one: **"Win ₦500,000, get refunded ₦1,000, or lose it — then try again."**
+
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
