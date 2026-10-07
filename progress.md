@@ -448,4 +448,17 @@ Also answered the user's "do I need to tell users to hard-refresh forever" quest
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
 
+---
+
+## 2026-10-07 — Wider on laptop screens, em dashes removed everywhere
+
+Two independent requests landed together: the Draw page (and "do the same for all laptop screens") looked small with large empty margins on a laptop, and every em dash in the app's visible copy should go.
+
+- **Layout:** every content page — `Draw`, `HowToPlay`, `Leaderboard`, `Profile`, `RecentEntries`, `Wallet`, `Winners` — shared the exact same `mx-auto max-w-sm` container (384px) regardless of viewport, which is why a laptop screen looked mostly empty. Added `lg:max-w-2xl` (672px) across all seven consistently, so they widen noticeably above the laptop breakpoint while staying byte-for-byte unchanged on mobile. `Login`/`Onboarding`'s form width was deliberately left alone — a wide phone-number input on desktop wouldn't help anyone.
+- **Em dashes:** swept every `.tsx` file for user-visible " — " (grep caught plenty, but almost all were in code comments, which aren't user-facing and were left as-is). Rewrote the real ones — confirmation toasts, button labels, `HowToPlay`'s prose, `Leaderboard`/`Onboarding`/`CommentFeed` copy, `index.html`'s meta description and social-preview titles — each as whatever read most naturally: a period split, a colon, or a comma, not a single global find-replace. Left two standalone `—` glyphs alone (Wallet's balance placeholder, Winners' missing-payout placeholder) — those mark "no value yet," a different job than joining a sentence.
+
+Verified both at a real 1440×900 viewport in a browser: the Draw page visibly fills more of the screen, and the rewritten copy reads correctly with no dashes. Both apps type-check clean; frontend-only, no new tests needed (layout + copy only).
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits.
+
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
