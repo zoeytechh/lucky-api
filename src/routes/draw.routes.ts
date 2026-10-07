@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { ENTRY_COST_MINOR, FEE_MINOR, ROUND_SIZE, STAKE_MINOR, WINNER_PAYOUT_MINOR } from '../config/constants'
 import { prisma } from '../lib/prisma'
 import { requireAuth, requireCompleteProfile } from '../middleware/auth'
-import { InsufficientBalanceError, placeEntry } from '../services/draw.service'
+import { AlreadyEnteredError, InsufficientBalanceError, placeEntry } from '../services/draw.service'
 
 const router = Router()
 
@@ -37,6 +37,9 @@ router.post('/entries', async (req, res) => {
   } catch (err) {
     if (err instanceof InsufficientBalanceError) {
       return res.status(402).json({ message: err.message, code: 'INSUFFICIENT_BALANCE' })
+    }
+    if (err instanceof AlreadyEnteredError) {
+      return res.status(409).json({ message: err.message, code: 'ALREADY_ENTERED' })
     }
     throw err
   }

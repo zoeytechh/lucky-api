@@ -12,6 +12,12 @@ export class InsufficientBalanceError extends Error {
   }
 }
 
+export class AlreadyEnteredError extends Error {
+  constructor() {
+    super('You already have an entry in the current round')
+  }
+}
+
 type RoundRow = { id: string; round_number: number; entry_count: number }
 
 /**
@@ -61,10 +67,41 @@ export type PlaceEntryResult = {
 type InternalPlaceEntryResult = PlaceEntryResult & { isReplay: boolean }
 
 type DrawEntryRow = { id: string; round_id: string; slot_number: number }
+type DrawEntryRowWithKey = DrawEntryRow & { idempotency_key: string }
 
 async function placeEntryOnce(userId: string, idempotencyKey: string): Promise<InternalPlaceEntryResult> {
   const result = await runInTransaction(async (tx) => {
     const round = await lockOpenRound(tx)
+
+    // One entry per user per round — enforced here, inside the round's
+    // own lock, so it's correct even if the same user fires two genuinely
+    // different requests (different idempotencyKeys, e.g. a UI bug or a
+    // deliberate double-click) at the same instant: both queue on the
+    // round lock above, and only the first to actually run this check
+    // finds nothing and proceeds. The frontend also disables the Enter
+    // button once a user has an entry in the current round, but that's
+    // just UX — this is the actual guarantee.
+    const existingForUser = await tx.$queryRaw<DrawEntryRowWithKey[]>`
+      SELECT id, round_id, slot_number, idempotency_key FROM draw_entries
+      WHERE round_id = ${round.id} AND user_id = ${userId}
+      LIMIT 1
+    `
+    if (existingForUser.length > 0) {
+      const existing = existingForUser[0]
+      if (existing.idempotency_key !== idempotencyKey) {
+        throw new AlreadyEnteredError()
+      }
+      // Same request retried (double-tap, network retry) — safe replay,
+      // same semantics as the idempotency-key conflict handled below.
+      return {
+        entryId: existing.id,
+        slotNumber: existing.slot_number,
+        roundId: existing.round_id,
+        roundNumber: round.round_number,
+        roundSettled: false,
+        isReplay: true,
+      }
+    }
 
     const entryId = randomUUID()
     const slotNumber = round.entry_count + 1
@@ -174,6 +211,9 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
   try {
     result = await placeEntryOnce(userId, idempotencyKey)
   } catch (err) {
+    // AlreadyEnteredError is a genuine rejection, not a transient race —
+    // retrying would just throw the same error again.
+    if (err instanceof AlreadyEnteredError) throw err
     // The only expected failure mode here is the first-boot round-creation
     // race described in lockOpenRound — retry once, by which point the
     // round the other transaction created is visible.

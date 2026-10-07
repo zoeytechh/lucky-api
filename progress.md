@@ -214,3 +214,17 @@ The user asked directly: "the moment the DRAW_ROUND_SIZE is complete, do all use
 - `socket.io-client` was added as a `lucky-api` *dev* dependency purely for `draw-socket.test.ts`; `npm install` flagged 4 high-severity advisories in its transitive tree — not investigated yet, worth a look before this becomes a habit.
 
 **Next:** finish the live manual draw test with the user and their friend now that the reveal is actually live for both of them simultaneously, then M7 — Paystack deposits.
+
+---
+
+## 2026-10-07 — One entry per user per round, enforced backend-first
+
+The user asked for the "ENTER — ₦1,200" button to disable once someone already has an entry in the round they're waiting on, explicitly specifying the backend as the real guard ("backend is more safer for control") with the frontend only reinforcing it. Until now nothing stopped a user from buying multiple slots in the same round — not a bug exactly, just never decided either way — this makes it an explicit one-entry-per-round rule.
+
+- **Backend:** new `AlreadyEnteredError`, checked inside `placeEntryOnce` right after the round lock is acquired — `SELECT ... WHERE round_id = ? AND user_id = ?`, serialized correctly against any other concurrent attempt from the same user because it's inside the same lock that already serializes entries into that round. A replay of the *same* idempotency key still succeeds (existing retry/double-tap semantics unchanged); a genuinely different key for a user who already has an entry in this round is rejected before any wallet debit happens. `draw.routes.ts` maps it to `409 ALREADY_ENTERED`. `placeEntry`'s outer retry-once logic (for the first-boot round-creation race) now explicitly skips retrying this error — it's a real rejection, not a transient race, so retrying would just throw the same thing again.
+- **Frontend:** `Draw.tsx` already computed `myCurrentEntry` (the user's entry in the currently-open round, used to feed `DrawRoll`'s "your number") — reused it to disable the Enter button and relabel it `YOU'RE IN — SLOT N` with a "Waiting for the draw to complete…" line, before the user ever gets a chance to hit the backend rule. `ErrorAlert` gained an `ALREADY_ENTERED` variant for the case the backend rejection surfaces anyway (stale state, a second tab, etc).
+- **Test:** new case in `draw-entry.test.ts` — drains the current round first (same pattern the capacity/overflow tests already use) so the user's one entry can't itself fill and settle the round, places one entry, then asserts a second distinct-key attempt throws `AlreadyEnteredError`, the wallet balance is unchanged (rejected before any debit), and exactly one entry row exists for that user in that round.
+
+Full suite: **20/20 passing** (19 + this one). Both apps build clean.
+
+**Next:** same as the entry above — live manual draw test, then M7.

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ENTRY_COST_MINOR, FEE_MINOR, ROUND_SIZE, STAKE_MINOR, WINNER_PAYOUT_MINOR } from '../../src/config/constants'
 import { prisma } from '../../src/lib/prisma'
-import { InsufficientBalanceError, placeEntry } from '../../src/services/draw.service'
+import { AlreadyEnteredError, InsufficientBalanceError, placeEntry } from '../../src/services/draw.service'
 import { getSystemUserId } from '../../src/services/wallet.service'
 import { cleanupEmptyRounds, cleanupTestUsers, createFundedTestUser, createFundedTestUsers } from '../helpers'
 
@@ -45,6 +45,30 @@ describe('draw entry + settlement, end to end', () => {
 
     const entries = await prisma.drawEntry.count({ where: { userId: user.id } })
     expect(entries).toBe(0)
+  })
+
+  it('rejects a second distinct entry from the same user in the same open round', async () => {
+    // Drained first (same reasoning as the capacity tests below) so this
+    // user's single entry can never itself be the one that fills and
+    // settles the round — ROUND_SIZE can be as small as a handful locally
+    // (DRAW_ROUND_SIZE), and this test needs the round to stay OPEN after
+    // the first entry so the second attempt lands in the *same* round.
+    const draining = await drainCurrentOpenRound()
+    trackedUserIds.push(...draining)
+
+    const user = await createFundedTestUser(ENTRY_COST_MINOR * 5n)
+    trackedUserIds.push(user.id)
+
+    const first = await placeEntry(user.id, `test:${randomUUID()}`)
+    const walletAfterFirst = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
+
+    await expect(placeEntry(user.id, `test:${randomUUID()}`)).rejects.toThrow(AlreadyEnteredError)
+
+    const walletAfterSecond = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
+    expect(walletAfterSecond.balanceMinor).toBe(walletAfterFirst.balanceMinor) // rejected before any debit
+
+    const entryCount = await prisma.drawEntry.count({ where: { userId: user.id, roundId: first.roundId } })
+    expect(entryCount).toBe(1)
   })
 
   it('replaying the same idempotencyKey does not create a second entry or double-charge', async () => {
