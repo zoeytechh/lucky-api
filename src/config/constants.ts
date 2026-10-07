@@ -20,3 +20,16 @@ export const WINNER_PAYOUT_MINOR = (STAKE_MINOR * BigInt(ROUND_SIZE)) / 2n
 // these.
 export const REFUND_COUNT = Math.ceil((ROUND_SIZE - 1) / 2)
 export const LOSS_COUNT = Math.floor((ROUND_SIZE - 1) / 2)
+
+// Decided once, server-side, at the moment a round settles — not
+// independently randomized per client (the original design) — so every
+// viewer, including one who loads the page mid-reveal, counts down to
+// the exact same winner-reveal instant instead of each client guessing
+// its own window. REVEAL_HOLD_MS is how long the winner stays on screen
+// after that before the next round is allowed to accept entries — this
+// is also the actual backend-enforced gate (see DrawRound.entriesOpenAt
+// in draw.service.ts), not just a frontend timer, so "only one round is
+// ever in play" is a real guarantee, not a UI convention.
+export const REVEAL_MIN_MS = 30_000
+export const REVEAL_MAX_MS = 59_000
+export const REVEAL_HOLD_MS = 4_000

@@ -160,6 +160,21 @@ model DrawRound {
   shuffleAudit Json?          @map("shuffle_audit")
   openedAt    DateTime        @default(now()) @map("opened_at")
   settledAt   DateTime?       @map("settled_at")
+  // When the winner number actually appears for everyone — decided once
+  // at settlement (see REVEAL_MIN_MS/REVEAL_MAX_MS), not independently
+  // randomized per client, so a late-joining viewer counts down to the
+  // same instant as everyone already watching. Null until this round
+  // settles.
+  revealAt    DateTime?       @map("reveal_at")
+  // When THIS round starts accepting entries. Defaults to creation time
+  // (the very first round ever, and the one-time first-boot path in
+  // lockOpenRound) — a round opened as a settlement's side effect gets
+  // this set explicitly to the previous round's revealAt + REVEAL_HOLD_MS,
+  // so entries are refused (see placeEntryOnce's guard) until the
+  // previous round's reveal has actually finished. This is what makes
+  // "only one round is ever in play" a real, backend-enforced guarantee
+  // rather than a UI convention multiple clients could disagree on.
+  entriesOpenAt DateTime      @default(now()) @map("entries_open_at")
 
   entries DrawEntry[]
 

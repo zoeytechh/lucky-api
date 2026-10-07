@@ -1,5 +1,11 @@
 import type { Prisma } from '../generated/prisma/client'
-import { STAKE_MINOR, WINNER_PAYOUT_MINOR } from '../config/constants'
+import {
+  REVEAL_HOLD_MS,
+  REVEAL_MAX_MS,
+  REVEAL_MIN_MS,
+  STAKE_MINOR,
+  WINNER_PAYOUT_MINOR,
+} from '../config/constants'
 import { displayNameFor } from '../lib/displayName'
 import { prisma, runInTransaction } from '../lib/prisma'
 import { notifyWalletUpdate } from '../realtime/socket'
@@ -57,6 +63,17 @@ export async function decideSettlement(tx: Prisma.TransactionClient, roundId: st
     data: { outcome: 'LOST', payoutMinor: 0n, settledAt: new Date() },
   })
 
+  // Decided once, here, server-side — not left for each client to
+  // randomize independently — so every viewer (including one who loads
+  // the page after this moment, mid-reveal) counts down to the exact
+  // same instant. entriesOpenAt on the next round (below) is derived
+  // from this one value, which is what actually enforces "no next round
+  // until this one's reveal concludes" at the database level, not just
+  // in the UI.
+  const now = new Date()
+  const revealAt = new Date(now.getTime() + REVEAL_MIN_MS + Math.random() * (REVEAL_MAX_MS - REVEAL_MIN_MS))
+  const nextEntriesOpenAt = new Date(revealAt.getTime() + REVEAL_HOLD_MS)
+
   await tx.drawRound.update({
     where: { id: roundId },
     data: {
@@ -64,11 +81,12 @@ export async function decideSettlement(tx: Prisma.TransactionClient, roundId: st
       winnerEntryId: winnerId,
       refundCount: refundedIds.length,
       lossCount: lostIds.length,
-      settledAt: new Date(),
+      settledAt: now,
+      revealAt,
       shuffleAudit: {
         algorithm: 'fisher-yates-crypto-randomInt',
         shuffledEntryIds: shuffled,
-        decidedAt: new Date().toISOString(),
+        decidedAt: now.toISOString(),
       },
     },
   })
@@ -77,8 +95,11 @@ export async function decideSettlement(tx: Prisma.TransactionClient, roundId: st
   // marking this one SETTLED (not before — the partial unique index
   // allows only one OPEN round, so the old one must stop being OPEN
   // before the new one can start being OPEN) — never a gap with zero
-  // open rounds.
-  const nextRound = await tx.drawRound.create({ data: {} })
+  // open rounds. It exists immediately (required for the concurrency
+  // guarantee above), but entriesOpenAt keeps it closed to entries until
+  // this round's reveal has actually finished — see placeEntryOnce's
+  // guard in draw.service.ts.
+  const nextRound = await tx.drawRound.create({ data: { entriesOpenAt: nextEntriesOpenAt } })
 
   // Returned so the caller can broadcast the result over the socket once
   // the transaction has actually committed (see draw.service.placeEntry)
@@ -90,8 +111,10 @@ export async function decideSettlement(tx: Prisma.TransactionClient, roundId: st
     winnerAvatarUrl: winnerUser.avatarUrl,
     refundCount: refundedIds.length,
     lossCount: lostIds.length,
+    revealAt,
     nextRoundId: nextRound.id,
     nextRoundNumber: nextRound.roundNumber,
+    nextEntriesOpenAt,
   }
 }
 

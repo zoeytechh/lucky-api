@@ -18,7 +18,18 @@ export class AlreadyEnteredError extends Error {
   }
 }
 
-type RoundRow = { id: string; round_number: number; entry_count: number }
+// Thrown when the open round exists but hasn't started accepting
+// entries yet — the previous round's reveal is still playing out for
+// everyone watching it. See DrawRound.entriesOpenAt's schema comment.
+export class DrawInProgressError extends Error {
+  entriesOpenAt: Date
+  constructor(entriesOpenAt: Date) {
+    super('The current draw is still revealing its winner — try again in a moment')
+    this.entriesOpenAt = entriesOpenAt
+  }
+}
+
+type RoundRow = { id: string; round_number: number; entry_count: number; entries_open_at: Date }
 
 /**
  * Locks the single OPEN round (Postgres SELECT ... FOR UPDATE) — every
@@ -32,7 +43,7 @@ type RoundRow = { id: string; round_number: number; entry_count: number }
  */
 async function lockOpenRound(tx: Prisma.TransactionClient): Promise<RoundRow> {
   const rows = await tx.$queryRaw<RoundRow[]>`
-    SELECT id, round_number, entry_count FROM draw_rounds WHERE status = 'OPEN' FOR UPDATE
+    SELECT id, round_number, entry_count, entries_open_at FROM draw_rounds WHERE status = 'OPEN' FOR UPDATE
   `
   if (rows.length > 0) return rows[0]
 
@@ -43,7 +54,7 @@ async function lockOpenRound(tx: Prisma.TransactionClient): Promise<RoundRow> {
   // an event that happens exactly once in the application's lifetime.
   await tx.drawRound.create({ data: {} })
   const created = await tx.$queryRaw<RoundRow[]>`
-    SELECT id, round_number, entry_count FROM draw_rounds WHERE status = 'OPEN' FOR UPDATE
+    SELECT id, round_number, entry_count, entries_open_at FROM draw_rounds WHERE status = 'OPEN' FOR UPDATE
   `
   return created[0]
 }
@@ -57,8 +68,10 @@ export type PlaceEntryResult = {
   winnerSlotNumber?: number
   winnerDisplayName?: string
   winnerAvatarUrl?: string | null
+  revealAt?: Date
   nextRoundId?: string
   nextRoundNumber?: number
+  nextEntriesOpenAt?: Date
 }
 
 // Internal-only: lets placeEntry tell a genuine settlement apart from an
@@ -77,6 +90,17 @@ type DrawEntryRowWithKey = DrawEntryRow & { idempotency_key: string }
 async function placeEntryOnce(userId: string, idempotencyKey: string): Promise<InternalPlaceEntryResult> {
   const result = await runInTransaction(async (tx) => {
     const round = await lockOpenRound(tx)
+
+    // Refused inside the same lock that serializes every other entry
+    // into this round — the previous round's reveal is still playing
+    // out for everyone watching it, and this round isn't open for
+    // entries until that concludes (see entries_open_at's schema
+    // comment). A genuine rejection, not a transient race — placeEntry's
+    // outer retry-once logic explicitly skips retrying it, same as
+    // AlreadyEnteredError.
+    if (round.entries_open_at > new Date()) {
+      throw new DrawInProgressError(round.entries_open_at)
+    }
 
     // One entry per user per round — enforced here, inside the round's
     // own lock, so it's correct even if the same user fires two genuinely
@@ -193,8 +217,10 @@ async function placeEntryOnce(userId: string, idempotencyKey: string): Promise<I
       winnerSlotNumber: settlement?.winnerSlotNumber,
       winnerDisplayName: settlement?.winnerDisplayName,
       winnerAvatarUrl: settlement?.winnerAvatarUrl,
+      revealAt: settlement?.revealAt,
       nextRoundId: settlement?.nextRoundId,
       nextRoundNumber: settlement?.nextRoundNumber,
+      nextEntriesOpenAt: settlement?.nextEntriesOpenAt,
       isReplay: false,
       entrantBalanceMinor,
     }
@@ -223,9 +249,11 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
   try {
     result = await placeEntryOnce(userId, idempotencyKey)
   } catch (err) {
-    // AlreadyEnteredError is a genuine rejection, not a transient race —
-    // retrying would just throw the same error again.
-    if (err instanceof AlreadyEnteredError) throw err
+    // AlreadyEnteredError and DrawInProgressError are genuine rejections,
+    // not a transient race — retrying would just throw the same error
+    // again (the round lock already serialized this check against every
+    // other concurrent attempt).
+    if (err instanceof AlreadyEnteredError || err instanceof DrawInProgressError) throw err
     // The only expected failure mode here is the first-boot round-creation
     // race described in lockOpenRound — retry once, by which point the
     // round the other transaction created is visible.
@@ -260,8 +288,10 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
       winnerSlotNumber: result.winnerSlotNumber,
       winnerDisplayName: result.winnerDisplayName,
       winnerAvatarUrl: result.winnerAvatarUrl,
+      revealAt: result.revealAt,
       nextRoundId: result.nextRoundId,
       nextRoundNumber: result.nextRoundNumber,
+      nextEntriesOpenAt: result.nextEntriesOpenAt,
     })
 
     // Outside the round lock entirely — see payOutRound's own comment.
@@ -295,7 +325,9 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
     winnerSlotNumber: result.winnerSlotNumber,
     winnerDisplayName: result.winnerDisplayName,
     winnerAvatarUrl: result.winnerAvatarUrl,
+    revealAt: result.revealAt,
     nextRoundId: result.nextRoundId,
     nextRoundNumber: result.nextRoundNumber,
+    nextEntriesOpenAt: result.nextEntriesOpenAt,
   }
 }

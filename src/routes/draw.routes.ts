@@ -4,14 +4,55 @@ import { ENTRY_COST_MINOR, FEE_MINOR, ROUND_SIZE, STAKE_MINOR, WINNER_PAYOUT_MIN
 import { displayNameFor } from '../lib/displayName'
 import { prisma } from '../lib/prisma'
 import { requireAuth, requireCompleteProfile } from '../middleware/auth'
-import { AlreadyEnteredError, InsufficientBalanceError, placeEntry } from '../services/draw.service'
+import {
+  AlreadyEnteredError,
+  DrawInProgressError,
+  InsufficientBalanceError,
+  placeEntry,
+} from '../services/draw.service'
 
 const router = Router()
 
 router.use(requireAuth, requireCompleteProfile)
 
+// Only one round is ever "in play" from a viewer's point of view — the
+// open round's own entriesOpenAt (see the schema comment on DrawRound)
+// stays in the future for as long as the *previous* round's reveal is
+// still playing out, so a client that just loaded the page mid-reveal
+// would otherwise see a blank, empty "next" round and miss it entirely.
+// When that's the case, this also looks up that previous (now SETTLED)
+// round and returns it as `drawing` — everything the frontend needs to
+// render the exact same suspense/reveal a viewer who was already
+// connected sees, synced to the same server-decided revealAt. `drawing`
+// is null the rest of the time (the normal case: the open round is
+// already accepting entries).
 router.get('/current', async (_req, res) => {
   const round = await prisma.drawRound.findFirst({ where: { status: 'OPEN' } })
+
+  let drawing = null
+  if (round && round.entriesOpenAt > new Date()) {
+    const previous = await prisma.drawRound.findFirst({
+      where: { status: 'SETTLED' },
+      orderBy: { settledAt: 'desc' },
+    })
+    if (previous?.winnerEntryId) {
+      const winnerEntry = await prisma.drawEntry.findUnique({
+        where: { id: previous.winnerEntryId },
+        select: { slotNumber: true, user: { select: { fullName: true, phoneNumber: true, avatarUrl: true } } },
+      })
+      if (winnerEntry) {
+        drawing = {
+          roundId: previous.id,
+          roundNumber: previous.roundNumber,
+          winnerSlotNumber: winnerEntry.slotNumber,
+          winnerDisplayName: displayNameFor(winnerEntry.user),
+          winnerAvatarUrl: winnerEntry.user.avatarUrl,
+          revealAt: previous.revealAt,
+        }
+      }
+    }
+  }
+
   res.json({
     roundId: round?.id ?? null,
     roundNumber: round?.roundNumber ?? null,
@@ -21,6 +62,8 @@ router.get('/current', async (_req, res) => {
     stakeMinor: STAKE_MINOR.toString(),
     feeMinor: FEE_MINOR.toString(),
     winnerPayoutMinor: WINNER_PAYOUT_MINOR.toString(),
+    entriesOpenAt: round?.entriesOpenAt ?? null,
+    drawing,
   })
 })
 
@@ -41,6 +84,11 @@ router.post('/entries', async (req, res) => {
     }
     if (err instanceof AlreadyEnteredError) {
       return res.status(409).json({ message: err.message, code: 'ALREADY_ENTERED' })
+    }
+    if (err instanceof DrawInProgressError) {
+      return res
+        .status(423)
+        .json({ message: err.message, code: 'DRAW_IN_PROGRESS', entriesOpenAt: err.entriesOpenAt })
     }
     throw err
   }
