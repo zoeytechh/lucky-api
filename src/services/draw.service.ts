@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Prisma } from '../generated/prisma/client'
 import { ENTRY_COST_MINOR, FEE_MINOR, ROUND_SIZE, STAKE_MINOR } from '../config/constants'
 import { prisma, runInTransaction } from '../lib/prisma'
-import { tryGetIo } from '../realtime/socket'
+import { notifyWalletUpdate, tryGetIo } from '../realtime/socket'
 import { decideSettlement, payOutRound } from './settlement.service'
 import { credit, debit, getSystemUserId } from './wallet.service'
 
@@ -65,8 +65,11 @@ export type PlaceEntryResult = {
 // idempotency replay of an already-settled entry, without that
 // distinction leaking into the public result type above (the route
 // response never needs it — it's only used here to decide whether to
-// broadcast).
-type InternalPlaceEntryResult = PlaceEntryResult & { isReplay: boolean }
+// broadcast). entrantBalanceMinor is similarly internal — only present
+// on a genuine (non-replay) entry, used to push a live wallet update;
+// the HTTP response itself doesn't need it, the entrant's own client
+// already has it via refreshWallet().
+type InternalPlaceEntryResult = PlaceEntryResult & { isReplay: boolean; entrantBalanceMinor?: bigint }
 
 type DrawEntryRow = { id: string; round_id: string; slot_number: number }
 type DrawEntryRowWithKey = DrawEntryRow & { idempotency_key: string }
@@ -147,7 +150,11 @@ async function placeEntryOnce(userId: string, idempotencyKey: string): Promise<I
       referenceId: entryId,
       idempotencyKey: `draw_entry_stake:${entryId}`,
     })
-    await debit(tx, {
+    // Reflects the entrant's balance after both debits above (same
+    // locked wallet row, applied in sequence within this transaction) —
+    // carried out so the caller can push a live wallet update once this
+    // transaction actually commits.
+    const { balanceMinor: entrantBalanceMinor } = await debit(tx, {
       userId,
       amountMinor: FEE_MINOR,
       entryType: 'DRAW_ENTRY_FEE',
@@ -189,6 +196,7 @@ async function placeEntryOnce(userId: string, idempotencyKey: string): Promise<I
       nextRoundId: settlement?.nextRoundId,
       nextRoundNumber: settlement?.nextRoundNumber,
       isReplay: false,
+      entrantBalanceMinor,
     }
   })
 
@@ -234,6 +242,9 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
   const io = tryGetIo()
 
   if (!result.isReplay) {
+    if (result.entrantBalanceMinor !== undefined) {
+      notifyWalletUpdate(userId, result.entrantBalanceMinor)
+    }
     io?.emit('round:progress', {
       roundId: result.roundId,
       roundNumber: result.roundNumber,

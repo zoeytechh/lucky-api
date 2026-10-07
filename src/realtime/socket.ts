@@ -13,24 +13,18 @@ let io: Server | null = null
 type PostAck = (res: { ok: true } | { ok: false; code: string; message: string }) => void
 
 /**
- * The /comments namespace, authenticated (unlike the default namespace
- * below) — posting a comment needs a real user identity to attribute and
- * rate-limit, which round progress/settlement never needed. A namespace,
- * not a second server, so this shares the same port/instance with zero
- * extra infrastructure; it just carries its own connection middleware.
+ * Shared by every authenticated namespace (/comments, /wallet) — same
+ * JWT handshake + mandatory-avatar gate as requireCompleteProfile on the
+ * REST side, just with no Express middleware layer to put it in, so it
+ * lives here instead. Centralized so the two namespaces can't drift into
+ * two slightly different versions of "who's allowed to connect."
  */
-function initCommentsNamespace(server: Server) {
-  const comments = server.of('/comments')
-
-  comments.use(async (socket: Socket, next) => {
+function authenticateSocket(socket: Socket, next: (err?: Error) => void) {
+  ;(async () => {
     const token = socket.handshake.auth?.token
     if (typeof token !== 'string') return next(new Error('unauthorized'))
     try {
       const payload = verifyAccessToken(token)
-      // Same mandatory-avatar gate as every other authenticated route
-      // (requireCompleteProfile) — enforced here too since the comment
-      // feed has no separate middleware layer to put it in. SYSTEM/ADMIN
-      // stay exempt, same reasoning as the REST gate.
       const user = await prisma.user.findUnique({
         where: { id: payload.sub },
         select: { role: true, avatarUrl: true },
@@ -44,7 +38,19 @@ function initCommentsNamespace(server: Server) {
     } catch {
       next(new Error('unauthorized'))
     }
-  })
+  })()
+}
+
+/**
+ * The /comments namespace, authenticated (unlike the default namespace
+ * below) — posting a comment needs a real user identity to attribute and
+ * rate-limit, which round progress/settlement never needed. A namespace,
+ * not a second server, so this shares the same port/instance with zero
+ * extra infrastructure; it just carries its own connection middleware.
+ */
+function initCommentsNamespace(server: Server) {
+  const comments = server.of('/comments')
+  comments.use(authenticateSocket)
 
   comments.on('connection', (socket: Socket) => {
     socket.on('comment:send', async (body: unknown, ack?: PostAck) => {
@@ -67,6 +73,22 @@ function initCommentsNamespace(server: Server) {
 }
 
 /**
+ * The /wallet namespace — authenticated like /comments, but no shared
+ * broadcast: each socket joins a room keyed by its own userId, so a
+ * balance change can be pushed to exactly the one account it belongs to
+ * rather than every connected client. See notifyWalletUpdate below for
+ * the emit side.
+ */
+function initWalletNamespace(server: Server) {
+  const wallet = server.of('/wallet')
+  wallet.use(authenticateSocket)
+
+  wallet.on('connection', (socket: Socket) => {
+    socket.join(socket.data.userId)
+  })
+}
+
+/**
  * Plain in-memory Socket.IO — no Redis adapter. The adapter from the
  * original M10 plan is only needed to fan out events across *multiple*
  * server instances; Render is running a single instance of lucky-api, so
@@ -75,8 +97,8 @@ function initCommentsNamespace(server: Server) {
  *
  * No handshake auth on the default namespace: round progress/settlement
  * outcomes aren't per-user-sensitive (everyone already sees who won), so
- * that channel is intentionally public. The /comments namespace above is
- * the one place that does need per-user identity.
+ * that channel is intentionally public. /comments and /wallet are the
+ * two places that do need per-user identity.
  */
 export function initSocket(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
@@ -86,6 +108,7 @@ export function initSocket(httpServer: HttpServer): Server {
     },
   })
   initCommentsNamespace(io)
+  initWalletNamespace(io)
   return io
 }
 
@@ -104,4 +127,21 @@ export function getIo(): Server {
  */
 export function tryGetIo(): Server | null {
   return io
+}
+
+/**
+ * Pushes a fresh balance to exactly one user's /wallet room — call this
+ * after any transaction that moves money has already committed (never
+ * from inside one that could still roll back, same rule round:settled
+ * follows). Covers every wallet-affecting flow that exists today (a
+ * draw entry's debit, a payout's credit) and is the hook a future
+ * Paystack webhook handler should call into as soon as it lands, so a
+ * deposit shows up the instant it's confirmed instead of waiting for
+ * the viewer to happen to revisit the Wallet page.
+ */
+export function notifyWalletUpdate(userId: string, balanceMinor: bigint) {
+  tryGetIo()
+    ?.of('/wallet')
+    .to(userId)
+    .emit('wallet:updated', { balanceMinor: balanceMinor.toString() })
 }

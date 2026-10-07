@@ -2,6 +2,7 @@ import type { Prisma } from '../generated/prisma/client'
 import { STAKE_MINOR, WINNER_PAYOUT_MINOR } from '../config/constants'
 import { displayNameFor } from '../lib/displayName'
 import { prisma, runInTransaction } from '../lib/prisma'
+import { notifyWalletUpdate } from '../realtime/socket'
 import { secureShuffle } from './rng'
 import { credit } from './wallet.service'
 
@@ -123,7 +124,7 @@ export async function payOutRound(roundId: string) {
   const results = await Promise.allSettled(
     outstanding.map((entry) =>
       runInTransaction(async (tx) => {
-        await credit(tx, {
+        const { balanceMinor } = await credit(tx, {
           userId: entry.userId,
           amountMinor: entry.payoutMinor!,
           entryType: entry.outcome === 'WON' ? 'DRAW_WINNER_PAYOUT' : 'DRAW_REFUND',
@@ -135,6 +136,19 @@ export async function payOutRound(roundId: string) {
           where: { id: entry.id },
           data: { settledAt: new Date() },
         })
+        return balanceMinor
+      }).then((balanceMinor) => {
+        // Outside the transaction, same rule as every other broadcast —
+        // and chained per-entry rather than waiting on Promise.allSettled
+        // below, so each winner/refunded user sees their own balance
+        // update the moment *their* payout lands, not once all 501 do.
+        // Wrapped so a broadcast hiccup can never flip an actually-
+        // successful payout into a reported failure below.
+        try {
+          notifyWalletUpdate(entry.userId, balanceMinor)
+        } catch (err) {
+          console.error(`notifyWalletUpdate failed for entry ${entry.id}:`, err)
+        }
       }),
     ),
   )
