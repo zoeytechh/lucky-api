@@ -476,4 +476,19 @@ Mid-session, helping the user prep production rounds for a live multi-person tes
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Separately now open: a dedicated test database, so `npm test` is never again able to touch whatever round real users are mid-entry on.
 
+---
+
+## 2026-10-08 — Mandatory name, and WinnerModal stays until dismissed
+
+Two requests landed together while the user was live-testing: `WinnerModal` shouldn't disappear on its own, and it shouldn't show a masked phone number for a winner who never set a name — meaning a name needed to become mandatory, same tier as the avatar, not just a display-layer patch.
+
+- **Removed `WinnerModal`'s 8s auto-dismiss timer** — it now only closes via the viewer's own ✕ or "NICE!" tap.
+- **A real name is now required everywhere a complete profile already was**: `requireCompleteProfile` and `authenticateSocket` (the one shared gate behind both `/comments` and the new `/wallet` namespace) both check `fullName` alongside `avatarUrl`. `Onboarding.tsx` gained a required name field next to the photo; critically, an existing user who already has a photo but no name (every account onboarded before today) sees their *current* photo already filled in rather than being asked to re-upload — only the name field blocks `CONTINUE` for them. Every frontend "is the profile complete" check — `App.tsx`'s redirect, both of `Login.tsx`'s, `WalletContext`'s fetch-gate — was updated together so none of them can drift from what "complete" actually means now.
+- **Caught a real test gap this exposed**: `comments-socket.test.ts`'s `createUser` helper never set `fullName`, so its own "complete profile" test users would have failed the new, stricter gate. Gave it a default name alongside its existing avatar default — the same default-parameter-destructuring pattern (not `??`) that helper already uses for `avatarUrl`, for the same reason.
+- **Verified live, both directions**: a brand-new account correctly lands on Onboarding with `CONTINUE` disabled until both a photo and a name are present; a pre-existing account missing only a name lands there too, shows its existing photo immediately (no re-upload prompt), and `CONTINUE` enables as soon as a name is typed.
+
+Both apps type-check clean; backend test-impacting changes were verified by reading the affected test file and fixing the one real gap found, not by running the live suite — see the entry above for why that's off the table while this session and production still share a database.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
+
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
