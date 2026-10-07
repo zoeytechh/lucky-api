@@ -18,11 +18,12 @@ export async function decideSettlement(tx: Prisma.TransactionClient, roundId: st
   const entries = await tx.drawEntry.findMany({
     where: { roundId },
     orderBy: { slotNumber: 'asc' },
-    select: { id: true },
+    select: { id: true, slotNumber: true },
   })
 
   const shuffled = secureShuffle(entries.map((e) => e.id))
   const winnerId = shuffled[0]
+  const winnerSlotNumber = entries.find((e) => e.id === winnerId)!.slotNumber
 
   // Derived from the actual entry count found, not a hardcoded 500/499 —
   // this is what lets the exact same code and formula run correctly at
@@ -70,7 +71,19 @@ export async function decideSettlement(tx: Prisma.TransactionClient, roundId: st
   // allows only one OPEN round, so the old one must stop being OPEN
   // before the new one can start being OPEN) — never a gap with zero
   // open rounds.
-  await tx.drawRound.create({ data: {} })
+  const nextRound = await tx.drawRound.create({ data: {} })
+
+  // Returned so the caller can broadcast the result over the socket once
+  // the transaction has actually committed (see draw.service.placeEntry)
+  // — without a second query to re-derive what was just decided here.
+  return {
+    winnerEntryId: winnerId,
+    winnerSlotNumber,
+    refundCount: refundedIds.length,
+    lossCount: lostIds.length,
+    nextRoundId: nextRound.id,
+    nextRoundNumber: nextRound.roundNumber,
+  }
 }
 
 /**

@@ -1,8 +1,10 @@
+import { createServer } from 'node:http'
 import cookieParser from 'cookie-parser'
 import cors from 'cors'
 import 'dotenv/config'
 import express, { type NextFunction, type Request, type Response } from 'express'
 import { prisma } from './lib/prisma'
+import { initSocket } from './realtime/socket'
 import authRoutes from './routes/auth.routes'
 import drawRoutes from './routes/draw.routes'
 import profileRoutes from './routes/profile.routes'
@@ -53,7 +55,12 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ message })
 })
 
+// A plain http.Server wrapping Express, not app.listen() directly —
+// Socket.IO needs to attach to the raw server to share the same port.
+const server = createServer(app)
+initSocket(server)
+
 const port = Number(process.env.PORT ?? 4000)
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`lucky-api listening on :${port}`)
 })

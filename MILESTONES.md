@@ -54,6 +54,31 @@ and the implementation plan for full technical detail on each.
       (in progress), and Cloudinary credentials still being filled in to
       replace the dev-mode avatar fallback.*
 
+- [x] **M6.5 — Live draw reveal (Socket.IO pulled forward from M10).** The
+      user asked directly whether every connected viewer sees the
+      settlement reveal in real time, and the honest answer at the time
+      was no — so M10's Socket.IO infrastructure was pulled forward rather
+      than shipping a polling workaround. `lucky-api` now broadcasts
+      `round:progress` (every fresh entry) and `round:settled` (winner
+      slot + next round) over a plain in-memory Socket.IO server attached
+      to the same HTTP server (no Redis adapter — unnecessary for Render's
+      single instance; revisit only if that changes); `lucky` connects via
+      `socket.io-client` and drives the `DrawRoll` reveal component for
+      every viewer, not just whoever placed the final entry. Also added: a
+      global "recent entries" feed (name/id + slot number, not just the
+      viewer's own entries) with a 3-item widget and a dedicated full
+      paginated page, and a deliberate 30–60s suspense delay before the
+      winner number appears (the backend already knows the outcome the
+      instant the round fills; revealing it immediately read as
+      anticlimactic). *Done 2026-10-07 — see `progress.md` for a real
+      concurrency bug this surfaced and fixed, and the new
+      `draw-socket.test.ts` suite verifying the broadcast itself end to
+      end against a real socket.io-client, not just the settlement logic
+      underneath it. Narrows M10 below to just what's left for the comment
+      feed specifically (Redis adapter, JWT handshake auth, persistence,
+      rate limiting) — the server/client socket plumbing itself already
+      exists.*
+
 - [ ] **M7 — Paystack deposits.** Dedicated virtual accounts + card
       checkout, webhook-verified wallet crediting. Real money can enter
       the system for the first time.
@@ -64,8 +89,10 @@ and the implementation plan for full technical detail on each.
 - [ ] **M9 — Daily leaderboard job.** BullMQ/Redis repeatable cron, the
       idempotent top-3 settlement and prize crediting.
 
-- [ ] **M10 — Live comment feed.** Socket.IO + Redis adapter, JWT
-      handshake auth, rate-limited comment posting.
+- [ ] **M10 — Live comment feed.** Socket.IO transport already exists
+      (pulled forward as M6.5 above) — what's left is specific to
+      comments: Redis adapter (for horizontal scaling), JWT handshake
+      auth, persistence, and rate-limited posting.
 
 - [ ] **M11 — Hardening.** Standing reconciliation cron, settlement
       audit-log viewer, admin tooling, rate limiting, webhook/reconciliation

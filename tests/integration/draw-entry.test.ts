@@ -144,7 +144,14 @@ describe('draw entry + settlement, end to end', () => {
       const draining = await drainCurrentOpenRound()
       trackedUserIds.push(...draining)
 
-      const overflowBy = 5
+      // Scaled to ROUND_SIZE (not a bare constant) so this stays "a small
+      // overflow into a second round that itself stays open" even when
+      // ROUND_SIZE is shrunk for manual testing (DRAW_ROUND_SIZE) — a
+      // fixed 5 would itself overflow a shrunk round (e.g. ROUND_SIZE=4),
+      // spilling into a *third* round and invalidating the "exactly two
+      // rounds touched" assertions below for reasons unrelated to what
+      // this test actually checks.
+      const overflowBy = Math.max(1, Math.min(5, ROUND_SIZE - 1))
       const users = await createFundedTestUsers(ROUND_SIZE + overflowBy, ENTRY_COST_MINOR * 2n)
       trackedUserIds.push(...users.map((u) => u.id))
 

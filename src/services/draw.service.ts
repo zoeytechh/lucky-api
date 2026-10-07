@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Prisma } from '../generated/prisma/client'
 import { ENTRY_COST_MINOR, FEE_MINOR, ROUND_SIZE, STAKE_MINOR } from '../config/constants'
 import { prisma, runInTransaction } from '../lib/prisma'
+import { tryGetIo } from '../realtime/socket'
 import { decideSettlement, payOutRound } from './settlement.service'
 import { credit, debit, getSystemUserId } from './wallet.service'
 
@@ -47,11 +48,21 @@ export type PlaceEntryResult = {
   roundId: string
   roundNumber: number
   roundSettled: boolean
+  winnerSlotNumber?: number
+  nextRoundId?: string
+  nextRoundNumber?: number
 }
+
+// Internal-only: lets placeEntry tell a genuine settlement apart from an
+// idempotency replay of an already-settled entry, without that
+// distinction leaking into the public result type above (the route
+// response never needs it — it's only used here to decide whether to
+// broadcast).
+type InternalPlaceEntryResult = PlaceEntryResult & { isReplay: boolean }
 
 type DrawEntryRow = { id: string; round_id: string; slot_number: number }
 
-async function placeEntryOnce(userId: string, idempotencyKey: string): Promise<PlaceEntryResult> {
+async function placeEntryOnce(userId: string, idempotencyKey: string): Promise<InternalPlaceEntryResult> {
   const result = await runInTransaction(async (tx) => {
     const round = await lockOpenRound(tx)
 
@@ -82,6 +93,7 @@ async function placeEntryOnce(userId: string, idempotencyKey: string): Promise<P
         roundId: existing[0].round_id,
         roundNumber: round.round_number,
         roundSettled: false, // replay — caller already got the real answer the first time
+        isReplay: true,
       }
     }
 
@@ -120,8 +132,9 @@ async function placeEntryOnce(userId: string, idempotencyKey: string): Promise<P
     })
 
     let roundSettled = false
+    let settlement: Awaited<ReturnType<typeof decideSettlement>> | undefined
     if (slotNumber === ROUND_SIZE) {
-      await decideSettlement(tx, round.id)
+      settlement = await decideSettlement(tx, round.id)
       roundSettled = true
     }
 
@@ -131,6 +144,10 @@ async function placeEntryOnce(userId: string, idempotencyKey: string): Promise<P
       roundId: round.id,
       roundNumber: round.round_number,
       roundSettled,
+      winnerSlotNumber: settlement?.winnerSlotNumber,
+      nextRoundId: settlement?.nextRoundId,
+      nextRoundNumber: settlement?.nextRoundNumber,
+      isReplay: false,
     }
   })
 
@@ -153,7 +170,7 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
     throw new InsufficientBalanceError()
   }
 
-  let result: PlaceEntryResult
+  let result: InternalPlaceEntryResult
   try {
     result = await placeEntryOnce(userId, idempotencyKey)
   } catch (err) {
@@ -165,7 +182,31 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
     result = await placeEntryOnce(userId, idempotencyKey)
   }
 
+  // Broadcast only for a genuinely fresh entry — a replay (idempotency
+  // hit) means nothing new actually happened, so there's nothing to tell
+  // other viewers. Emitted after the transaction has already committed
+  // (never from inside one that could still roll back) — same rule
+  // payOutRound follows below.
+  const io = tryGetIo()
+
+  if (!result.isReplay) {
+    io?.emit('round:progress', {
+      roundId: result.roundId,
+      roundNumber: result.roundNumber,
+      entryCount: result.slotNumber,
+      capacity: ROUND_SIZE,
+    })
+  }
+
   if (result.roundSettled) {
+    io?.emit('round:settled', {
+      roundId: result.roundId,
+      roundNumber: result.roundNumber,
+      winnerSlotNumber: result.winnerSlotNumber,
+      nextRoundId: result.nextRoundId,
+      nextRoundNumber: result.nextRoundNumber,
+    })
+
     // Outside the round lock entirely — see payOutRound's own comment.
     // Not swallowed silently: logged so a failed payout (whole-batch, or
     // individual payouts within it) is visible and can be retried
