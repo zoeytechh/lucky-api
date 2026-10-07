@@ -399,4 +399,12 @@ Immediate follow-up report: reloading the page from anywhere in the app — not 
 
 Also, on request: renamed the intro's `SKIP` button to `LET'S GO` — "skip" implied the screen was something worth avoiding, when it's just a one-time intro. Renamed `onSkip` to `onContinue` throughout `LoginIntro`/`Login.tsx` to match.
 
+---
+
+## 2026-10-07 — Made the ₦200 fee explicit on the Enter button and intro
+
+The user pointed out "ENTER — ₦1,200" doesn't tell anyone ₦200 of that is a separate platform fee, not part of the ₦1,000 stake. Rather than cram the breakdown into the CTA button itself (considered it — "ENTER — ₦1,000 + ₦200 fee" read as cluttered for a primary action button), kept the button short (`ENTER ₦1,200`, dash dropped per a follow-up request) and added a caption underneath it: `₦1,000 stake + ₦200 fee`, sourced from the round's real `stakeMinor`/`feeMinor` (added `feeMinor` to the frontend `Round` type — the backend's `/api/draw/current` already returned it, just wasn't read) rather than hardcoded, so it can never drift from whatever the actual constants are. `AppFlowSteps`' "Enter the draw" line got the same breakdown.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits.
+
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
