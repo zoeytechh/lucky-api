@@ -270,6 +270,28 @@ Both are UI-only; no backend logic changed, no new tests needed (nothing here to
 
 ---
 
+## 2026-10-07 — Real app branding: PWA icons, iOS install, social preview
+
+The user asked how an iOS user installs the app, and to make that easy — checking `lucky/public/` surfaced that this had never actually been done properly: `pwa-192x192.png`/`pwa-512x512.png` were literal placeholder stubs (68 bytes each, essentially blank), there was no `apple-touch-icon.png` at all despite being referenced in `vite.config.ts`'s `includeAssets`, and `favicon.svg` was still the default Vite/React template logo (an unrelated purple mark) — none of this had ever been replaced with real artwork, a gap already flagged under M11 ("real PWA icon artwork, currently placeholders") but not yet acted on.
+
+- **Real icon designed:** the same dancing-mascot figure as the nav's `PartyMascot` (gold figure, raised arms, mid-dance pose, on the deep-green ground color) — `lucky/pwa-assets/icon.svg`, a hand-written SVG (no external design tool), chosen specifically so the brand is the same character everywhere (nav, home screen, browser tab, social preview) rather than a different mark per surface.
+- **Generated via `@vite-pwa/assets-generator`** (new devDependency) — `favicon.ico`, `pwa-192x192.png`, `pwa-512x512.png`, a maskable 512 variant, and `apple-touch-icon.png`. Its default behavior pads maskable/apple icons 30% against a **white** background — wrong for a full-bleed dark-green source, it put a visible white halo around both. Fixed with a custom `pwa-assets.config.ts` overriding padding to 0 and background to the app's own `#0b3d24` — verified by actually viewing the generated PNGs before shipping them, not just trusting the tool's defaults.
+- **`index.html` gained the tags iOS Safari actually reads** for "Add to Home Screen" — none of these existed before: `<link rel="apple-touch-icon">`, `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style` (`black`, so the status bar stays opaque and matches the dark theme without needing safe-area-inset CSS), `apple-mobile-web-app-title`. Before this, installing on iOS would have fallen back to a screenshot thumbnail instead of a real icon.
+- **New `IosInstallBanner`** — iOS Safari has no equivalent of Chrome's `beforeinstallprompt`; there is no native "install" prompt at all, only the manual Share → Add to Home Screen path, which most users don't know exists. A small dismissible banner (detects iOS Safari specifically, not already standalone, not previously dismissed via `localStorage`) now surfaces that path directly in-app.
+- **Real meta description + Open Graph/Twitter card tags**, plus a generated 1200×630 social-preview image (`pwa-assets/og-image.svg`, rasterized via `sharp`, same mascot + wordmark) — so a link shared in WhatsApp/Twitter/etc. actually unfurls with a title, description, and branded image instead of a bare URL.
+
+Both source SVGs (`pwa-assets/icon.svg`, `pwa-assets/og-image.svg`) are kept in the repo so the full icon set can be regenerated later if the design changes — `npx pwa-assets-generator` picks up `pwa-assets.config.ts` automatically.
+
+**iOS install steps** (now also shown in-app via the banner): open the site in **Safari** specifically (Add to Home Screen only works from Safari, not Chrome/Firefox on iOS) → tap the **Share** icon → scroll down and tap **Add to Home Screen** → tap **Add**. The app icon then appears on the home screen and launches standalone (no browser chrome).
+
+Both apps build clean; no backend changes, no new tests needed (static assets + markup, nothing touching money/auth/settlement logic).
+
+**Open items carried forward:** unchanged (Cloudinary verification, Termii, refresh-token grace period, project skill, Foundation audit, `DRAW_ROUND_SIZE=4` must not ship as a real default).
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits.
+
+---
+
 ## 2026-10-07 — M10: live comment feed, pulled forward (same move as M6.5)
 
 The user asked for a comment section — this is M10 from the original plan, pulled forward the same way the live draw reveal (M6.5) pulled forward its Socket.IO infrastructure ahead of schedule. Since that infrastructure already exists, this landed as additive work on top of it, not a new system.
