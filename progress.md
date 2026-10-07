@@ -489,6 +489,20 @@ Two requests landed together while the user was live-testing: `WinnerModal` shou
 
 Both apps type-check clean; backend test-impacting changes were verified by reading the affected test file and fixing the one real gap found, not by running the live suite — see the entry above for why that's off the table while this session and production still share a database.
 
+---
+
+## 2026-10-08 — Critical regression: BigInt broke every draw entry, caught live by the user
+
+Right after the mandatory-name work shipped, the user reported an error banner ("Do not know how to serialize a BigInt") flashing on the Draw page while a round was loading. This was a real, severe regression from the wallet live-push commit two entries back — not a cosmetic bug.
+
+- **Root cause:** `draw.service.ts`'s `placeEntry` returned its raw internal result object straight out — including `entrantBalanceMinor` (a real `bigint`, added so the caller could push a live wallet update) and `isReplay`, neither meant to leave the function; `PlaceEntryResult`'s type declaration doesn't include them, but TypeScript types aren't runtime-enforced, so the actual object handed to `res.json()` in `draw.routes.ts` still carried the bigint. `JSON.stringify` (which `res.json()` calls internally) has no bigint representation and throws — meaning **every single non-replay draw entry** had been broken since that commit, not just winner payouts. Fixed by returning an explicit public-shape object instead of the internal one.
+- **Also hardened against this class of bug reaching users at all**, per direct feedback that a user should never see a raw exception message: `index.ts`'s generic error-handling middleware was echoing a crashed exception's own `.message` straight to the client — exactly how a literal Node/JS internal string ended up rendered in `ErrorAlert`. Every *expected* failure (insufficient balance, OTP errors, validation, already-entered) already has its own friendly message + code authored at the route level and is unaffected; this only changes what a genuinely unexpected crash reports to the client (now a flat "Something went wrong. Please try again." + `INTERNAL_ERROR` code) — still logged in full server-side via the existing `console.error`, never echoed outward.
+- **Verified against a real funded entry on the local dev server**: clean JSON response, no crash, no leaked field — confirmed by inspecting the raw response body directly, not just the absence of an error.
+
+A sobering reminder of exactly why this session's own stated practice — verify live, don't trust a diff — matters: this shipped in the previous entry's commit, type-checked clean (TypeScript can't catch an internal-only field leaking into a JSON response when the function's return type is structurally compatible), and would have kept breaking every entry silently if the user hadn't been actively testing live and reported it immediately.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
+
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
