@@ -419,4 +419,8 @@ The user asked for a standing page explaining the game, not just the one-time `L
 
 Verified live in a browser: nav link present and routes correctly, the page renders with real dev-environment numbers, the Draw-page link navigates through. Both apps type-check clean; no backend changes, no new tests needed (frontend-only, reads an existing endpoint).
 
+Follow-up on request: the tagline was too heavy at `font-display text-xl uppercase` — Anton is built for short punchy labels, not a full sentence. Switched to the body font (Nunito Sans) at `text-base`, extrabold weight, sentence case, width-capped to wrap into two lines.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits.
+
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
