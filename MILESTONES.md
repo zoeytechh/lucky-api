@@ -77,7 +77,13 @@ and the implementation plan for full technical detail on each.
       underneath it. Narrows M10 below to just what's left for the comment
       feed specifically (Redis adapter, JWT handshake auth, persistence,
       rate limiting) — the server/client socket plumbing itself already
-      exists.*
+      exists.* **Extended 2026-10-08:** only one round may be open at a
+      time — the next round exists but is locked from entries until the
+      current winner reveal's `entriesOpenAt` passes, and a late-joining
+      viewer's first load now reconstructs that same in-progress reveal
+      (winner modal included) instead of a blank new round. See
+      `progress.md` for the server-authoritative `revealAt` timing design
+      and the end-to-end browser verification.
 
 - [ ] **M7 — Paystack deposits.** Dedicated virtual accounts + card
       checkout, webhook-verified wallet crediting. Real money can enter
