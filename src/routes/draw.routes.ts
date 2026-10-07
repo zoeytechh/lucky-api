@@ -103,16 +103,17 @@ function pagination(req: { query: Record<string, unknown> }, defaultPageSize: nu
   return { page, pageSize, skip: (page - 1) * pageSize }
 }
 
-// Global feed (every user's entries, not just the caller's) so entrants
-// can see who else is in the round — used both for the small inline
-// "recent entries" widget on the Draw page (page size 3, no pagination
-// controls) and the dedicated /draw/recent page (page size 20, numbered
-// pagination).
+// The caller's own entries only — not a global feed. Used both for the
+// small inline "recent entries" widget on the Draw page (page size 3, no
+// pagination controls) and the dedicated /draw/recent page (page size
+// 20, numbered pagination).
 router.get('/recent-entries', async (req, res) => {
   const { page, pageSize, skip } = pagination(req, 20)
+  const where = { userId: req.user!.id }
 
   const [entries, total] = await Promise.all([
     prisma.drawEntry.findMany({
+      where,
       orderBy: { enteredAt: 'desc' },
       take: pageSize,
       skip,
@@ -121,7 +122,7 @@ router.get('/recent-entries', async (req, res) => {
         round: { select: { roundNumber: true, openedAt: true } },
       },
     }),
-    prisma.drawEntry.count(),
+    prisma.drawEntry.count({ where }),
   ])
 
   res.json({
