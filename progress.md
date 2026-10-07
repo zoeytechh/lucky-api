@@ -427,7 +427,24 @@ A third pass on the same line: the user wanted all three outcomes explicit rathe
 
 A fourth pass: that could still read as "get refunded" being the default/likely outcome rather than one of three equally-weighted branches. Offered several either/or-style rewrites; settled on "You'll either win ₦500,000, get refunded ₦1,000, or lose it — then try again" — leading with "either" makes the three-way split explicit from the first word, so no branch reads as the assumed default.
 
-Fifth, a small punctuation request: **comma instead of em dash before "then try again."** Final: **"You'll either win ₦500,000, get refunded ₦1,000, or lose it, then try again."**
+Fifth, a small punctuation request: comma instead of em dash before "then try again." Final: "You'll either win ₦500,000, get refunded ₦1,000, or lose it, then try again."
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits.
+
+---
+
+## 2026-10-07 — Two real UpdatePrompt bugs, caught by actually simulating a deploy
+
+The user hit the thing `UpdatePrompt` was built to prevent — reloading on their laptop kept showing the login intro's step list — then, once they got past that with a manual hard refresh (confirmed: a service worker from before today's fixes existed, with no way to know it needed replacing), asked a sharp follow-up: does this mean telling every user to hard-refresh after every deploy? And then: the Refresh button itself didn't do anything when clicked.
+
+Both turned out to be real, not user error — caught by actually simulating a deploy end-to-end (a Playwright harness: build, serve via `vite preview`, rewrite `index.html`'s `<title>` as a visible marker, rebuild into the same `dist/` the server's already serving, reload once to trigger the update check, click Refresh, check what actually rendered) rather than trusting `updateServiceWorker()`'s types or assuming the fix from two sessions ago was sufficient:
+
+1. **`reloadPage` has been a no-op since vite-plugin-pwa 0.13.2** (its own type definition says so, missed when `UpdatePrompt.tsx` was first written) — `updateServiceWorker(true)` only activates the new worker; reloading the page is the caller's responsibility, which nothing was doing.
+2. **Even with an explicit `window.location.reload()` added, a real race remained.** `updateServiceWorker()`'s promise resolves right after the skip-waiting message is *sent*, not after the browser finishes handing control to the new worker — reloading that fast can still land on the *old* worker. Proved this directly: the post-click navigation's own response came back `fromServiceWorker: true` serving the old precache (confirmed via Cache Storage inspection — the new worker's precache already had the correct new content at that exact moment), while a `fetch()` to the same URL moments later correctly got the new one. Fixed by waiting for the actual `controllerchange` event (a 3s timeout as a fallback, in case it never fires) before reloading.
+
+Re-ran the identical simulation after the fix: clicking Refresh now correctly lands on the new build's content with no further manual action. Both apps type-check clean; frontend-only change, no new automated test (the Playwright harness used to find and verify this was throwaway, same as every other browser-verification pass this session — still no project skill for this, carried forward yet again).
+
+Also answered the user's "do I need to tell users to hard-refresh forever" question directly: no — that was a one-time bootstrapping gap for anyone already running a pre-`UpdatePrompt` service worker. Everyone on the current code going forward gets the update check on a normal reload/revisit, no special action needed — which is now actually true, now that the button itself works.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
 
