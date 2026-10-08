@@ -537,4 +537,15 @@ Both apps type-check clean. **Standing lesson, same shape as the test-suite inci
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
 
-**Next:** finish the live manual draw test, then M7 — Paystack deposits.
+---
+
+## 2026-10-08 — The update banner now checks every 60s, not just on navigation
+
+The user noticed the "new version available" banner only ever showed up after a reload or after leaving and re-entering the app — never while a tab just sat open. The cause: a browser only re-fetches and diffs `sw.js` on an actual navigation event; nothing was ever asking it to check otherwise, so a tab left open through a deploy had no way to find out.
+
+- **Added a periodic `registration.update()` call** via `useRegisterSW`'s `onRegisteredSW` callback in `UpdatePrompt.tsx` — every 60s while the app is open, independent of any reload or route change. vite-plugin-pwa's own `needRefresh` state still flips automatically once that check finds a new worker; this just makes sure the check itself actually happens.
+- **Verified exactly the gap being fixed, not just that a reload still works** (that path was already confirmed in an earlier entry): built the app, served it via `vite preview`, opened it in a real browser tab, and — deliberately not reloading or navigating at all — rebuilt into the same `dist/` with a changed marker to simulate a live deploy landing while that tab stayed open. The banner appeared on its own, with zero navigation, right at the 60s mark (logged at t+58s).
+
+Frontend-only change, type-checks clean.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
