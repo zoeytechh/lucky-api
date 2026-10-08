@@ -148,11 +148,10 @@ export function notifyWalletUpdate(userId: string, balanceMinor: bigint) {
 }
 
 /**
- * Tells every connected viewer the comment feed was just wiped (the
- * daily reset — see jobs/dailyCommentReset.ts), so an open tab clears
- * its feed immediately instead of showing yesterday's comments until
- * the next reload.
+ * Tells every connected viewer exactly which comments just aged out (see
+ * jobs/commentExpiry.ts), so an open tab drops those rows immediately
+ * instead of waiting for its own 24h client-side filter or a reload.
  */
-export function notifyCommentsCleared() {
-  tryGetIo()?.of('/comments').emit('comment:cleared')
+export function notifyCommentsExpired(ids: string[]) {
+  tryGetIo()?.of('/comments').emit('comment:expired', { ids })
 }

@@ -58,12 +58,24 @@ export async function createComment(userId: string, rawBody: string): Promise<Co
   return toCommentWithUser(comment)
 }
 
+export const COMMENT_TTL_MS = 24 * 60 * 60 * 1000
+
 // Comments are a lightweight social layer, not part of the money ledger —
-// deliberately not kept forever. Called once a day by the scheduled reset
-// job (see jobs/dailyCommentReset.ts), not from any HTTP route.
-export async function purgeAllComments(): Promise<number> {
-  const { count } = await prisma.drawComment.deleteMany({})
-  return count
+// each one is deliberately not kept past 24h from when it was posted.
+// Called periodically by the scheduled expiry job (see
+// jobs/commentExpiry.ts), not from any HTTP route. Returns the ids
+// actually deleted, so the caller can tell connected clients exactly
+// which rows to drop rather than re-syncing the whole feed.
+export async function expireOldComments(): Promise<string[]> {
+  const cutoff = new Date(Date.now() - COMMENT_TTL_MS)
+  const expired = await prisma.drawComment.findMany({
+    where: { createdAt: { lt: cutoff } },
+    select: { id: true },
+  })
+  if (expired.length === 0) return []
+  const ids = expired.map((c) => c.id)
+  await prisma.drawComment.deleteMany({ where: { id: { in: ids } } })
+  return ids
 }
 
 export async function listRecentComments(limit = MAX_RECENT_COMMENTS): Promise<CommentWithUser[]> {
