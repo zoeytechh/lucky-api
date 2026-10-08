@@ -519,4 +519,18 @@ Both apps type-check clean. Not run against the automated test suite, same stand
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
 
+---
+
+## 2026-10-08 — Draw page "How it works" card, and the comment feed resets daily
+
+Two small, independent requests.
+
+- **"How it works" became a proper card.** It was a small inline underlined link at the end of a paragraph — easy to miss, and visually thin sitting right above the "Past Winners" card, which is a proper tappable row. Replaced it with a matching full-width card (icon, label, subtitle, chevron) using the same `rounded-lg border-hairline bg-ground-raised` treatment already established on Profile's input rows. Added two small icons (`QuestionIcon`, `ChevronRightIcon`) to the shared icon set, same stroke-based style as the rest. Verified at both phone width and the widened laptop breakpoint, and confirmed the link still navigates to `/how-to-play`.
+- **Comments now reset daily instead of accumulating forever.** The user was explicit: comments aren't part of the money ledger, so the feed should start fresh every day rather than keep everything indefinitely. Added a `node-cron` job (`jobs/dailyCommentReset.ts`) that wipes `draw_comments` at midnight WAT — no Redis needed, same "fewer dependencies before Redis is otherwise required" reasoning OTP codes already follow. Also broadcasts a new `comment:cleared` event on the `/comments` namespace so any tab left open overnight clears its feed the instant the reset runs, instead of showing yesterday's comments until the viewer happens to reload.
+- **Verified live, not just by reading the diff**: a temporary dev-only route called the exact same purge-and-broadcast path the midnight cron will call, with a real browser sitting on the Draw page. Posted a comment, confirmed it rendered, triggered the reset from a second identity, and watched the comment disappear and the "No comments yet" empty state appear in the same tab with no reload. The temporary route was removed before committing — `comments.routes.ts` diffs back to exactly what it was.
+
+Both apps type-check clean.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
+
 **Next:** finish the live manual draw test, then M7 — Paystack deposits.
