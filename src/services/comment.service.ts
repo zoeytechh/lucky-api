@@ -58,6 +58,14 @@ export async function createComment(userId: string, rawBody: string): Promise<Co
   return toCommentWithUser(comment)
 }
 
+// Comments are a lightweight social layer, not part of the money ledger —
+// deliberately not kept forever. Called once a day by the scheduled reset
+// job (see jobs/dailyCommentReset.ts), not from any HTTP route.
+export async function purgeAllComments(): Promise<number> {
+  const { count } = await prisma.drawComment.deleteMany({})
+  return count
+}
+
 export async function listRecentComments(limit = MAX_RECENT_COMMENTS): Promise<CommentWithUser[]> {
   const take = Math.min(Math.max(limit, 1), MAX_RECENT_COMMENTS)
   const comments = await prisma.drawComment.findMany({

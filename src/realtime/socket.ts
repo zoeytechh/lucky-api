@@ -146,3 +146,13 @@ export function notifyWalletUpdate(userId: string, balanceMinor: bigint) {
     .to(userId)
     .emit('wallet:updated', { balanceMinor: balanceMinor.toString() })
 }
+
+/**
+ * Tells every connected viewer the comment feed was just wiped (the
+ * daily reset — see jobs/dailyCommentReset.ts), so an open tab clears
+ * its feed immediately instead of showing yesterday's comments until
+ * the next reload.
+ */
+export function notifyCommentsCleared() {
+  tryGetIo()?.of('/comments').emit('comment:cleared')
+}

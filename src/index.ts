@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser'
 import cors from 'cors'
 import 'dotenv/config'
 import express, { type NextFunction, type Request, type Response } from 'express'
+import { scheduleDailyCommentReset } from './jobs/dailyCommentReset'
 import { prisma } from './lib/prisma'
 import { initSocket } from './realtime/socket'
 import authRoutes from './routes/auth.routes'
@@ -71,6 +72,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 // Socket.IO needs to attach to the raw server to share the same port.
 const server = createServer(app)
 initSocket(server)
+scheduleDailyCommentReset()
 
 const port = Number(process.env.PORT ?? 4000)
 server.listen(port, () => {
