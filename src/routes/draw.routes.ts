@@ -167,7 +167,7 @@ router.get('/recent-entries', async (req, res) => {
       skip,
       include: {
         user: { select: { id: true, fullName: true, phoneNumber: true } },
-        round: { select: { roundNumber: true, openedAt: true } },
+        round: { select: { roundNumber: true } },
       },
     }),
     prisma.drawEntry.count({ where }),
@@ -178,7 +178,10 @@ router.get('/recent-entries', async (req, res) => {
       id: e.id,
       roundId: e.roundId,
       roundNumber: e.round.roundNumber,
-      roundDate: e.round.openedAt,
+      // The entry's own timestamp, not the round's — a round can stay
+      // open across a day boundary, so round.openedAt could show the
+      // wrong calendar day for an entry placed after midnight.
+      roundDate: e.enteredAt,
       slotNumber: e.slotNumber,
       outcome: e.outcome,
       payoutMinor: e.payoutMinor?.toString() ?? null,
@@ -209,7 +212,7 @@ router.get('/winners', async (req, res) => {
       skip,
       include: {
         user: { select: { id: true, fullName: true, phoneNumber: true } },
-        round: { select: { roundNumber: true, openedAt: true } },
+        round: { select: { roundNumber: true } },
       },
     }),
     prisma.drawEntry.count({ where: { outcome: 'WON' } }),
@@ -220,7 +223,10 @@ router.get('/winners', async (req, res) => {
       id: e.id,
       roundId: e.roundId,
       roundNumber: e.round.roundNumber,
-      roundDate: e.round.openedAt,
+      // The entry's own timestamp, not the round's — a round can stay
+      // open across a day boundary, so round.openedAt could show the
+      // wrong calendar day for an entry placed after midnight.
+      roundDate: e.enteredAt,
       slotNumber: e.slotNumber,
       payoutMinor: e.payoutMinor?.toString() ?? null,
       settledAt: e.settledAt,
