@@ -549,3 +549,20 @@ The user noticed the "new version available" banner only ever showed up after a 
 Frontend-only change, type-checks clean.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
+
+---
+
+## 2026-10-09 — Renamed to Lucky You, a copy fix, and a proper entry-confirmation toast
+
+Live-testing continued with the user and friends playing real rounds in production. Several small requests landed together.
+
+- **Renamed the app from Lucky to Lucky You** — every wordmark (nav, mobile menu, login intro, login page, splash loader), the PWA manifest `name`/`short_name`, every `index.html` meta tag (title, description, Open Graph, Twitter card), `HowToPlay`'s heading, the iOS install banner, the update-available banner, and the OTP SMS template. Verified the wider wordmark doesn't overflow the nav at 375px width or break the mobile slide-out menu — screenshotted both before committing.
+- **Entry cost breakdown copy fix**: "₦1,000 stake + ₦200 app fee" → "₦1,000 entry fee + ₦200 app fee" on the Draw page.
+- **The entry date bug the user caught** ("recent entries is showing 8 and today 9"): `/recent-entries` and `/winners` were labeling every entry with `round.openedAt` instead of the entry's own `enteredAt` — harmless while a round fills in minutes, wrong once one sits open across a day boundary, which is exactly what round 659 did. Fixed to use each `DrawEntry`'s own timestamp. Verified live against production (`roundDate` now matches `enteredAt` exactly).
+- **Entry confirmation made genuinely visible.** A confirmation already existed in code, but as a small green line directly under the Enter button, competing with an almost-identical caption right above it ("Waiting for the draw to complete…") — easy to miss after spending real money. Replaced it with a clear top-of-screen toast (checkmark icon + message). First pass placed it at `top-4`, which overlapped the sticky nav and blocked the hamburger menu — caught by a Playwright click actually failing with "element intercepts pointer events," not by eyeballing a screenshot. Moved to `top-20` to sit cleanly below the nav instead.
+- **Verified the toast without touching the live round**: since the production round was mid-test with the user's friends (an entry would have consumed one of their remaining slots), the toast was checked by temporarily forcing the component's confirmation state in code, screenshotting it, then reverting — not by placing a real entry.
+- **Live production operations this session**: added filler entries to keep rounds at a friendly count for the user's group to complete (`round 659` → 1/4, `round 660` → 2/4), and funded a real friend's account (`+2347069283585`, "Dili") after confirming they were a genuine pre-existing user, not a test fixture — ₦1,200 then another ₦6,000 on request, confirmed via wallet balance each time.
+
+Both apps type-check clean.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
