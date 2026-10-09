@@ -566,3 +566,18 @@ Live-testing continued with the user and friends playing real rounds in producti
 Both apps type-check clean.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
+
+---
+
+## 2026-10-09 — The draw ring is now a real countdown, and a proper winner celebration
+
+Two requests landed together while the user kept live-testing with friends.
+
+- **The ring predicts when the draw ends, instead of just sitting full.** Once a round fills, the ring stayed a static filled gold circle with no sense of when the winner would actually appear — the user asked for it to transition color over exactly the time the draw takes, "more like a loader." `DrawRoll` now animates the ring from gold to white (`RING_GOLD` → `RING_WHITE`, a Motion `animate()` call on a motion value feeding a `useTransform`-derived conic-gradient) over precisely the time remaining until the server's own `revealAt` — the same instant every viewer already converges on for the winner modal itself (see the round-sync entry above). Starting the animation duration from "time remaining right now" rather than a fixed total means a late joiner's ring still finishes exactly white when everyone else's does, just over whatever's left from their join point. `Draw.tsx` threads `pendingSettlement.revealAt` down as the new `revealAt` prop.
+- **WinnerModal now actually congratulates the winner.** It said "We have a winner" / "You won!" but never the word "Congratulations" — added a clear success-colored headline. The mascot's usual animation (a gentle nav-bar sway, deliberately subtle since it runs continuously in the background everywhere) read as too subdued for a real-money win, so `PartyMascot` gained a `dance` prop — a bigger, faster version of the same loop (wider rotation, a scale pulse, almost double speed) — used only in the winner modal, not the nav.
+- **Verified both without touching the live round**: the production round was mid-test with the user's group, so rather than risk consuming one of their remaining slots, `pendingSettlement` was temporarily forced in code with an 8-second `revealAt`, screenshotted at t=0 (gold), t=4s (visibly blended toward white), and t=9.5s (winner modal showing the new Congratulations headline and the mascot mid-dance), then reverted before committing.
+- **Live production operations this session**: kept adding filler entries to new rounds as each one settled and the next opened (`round 661` → 1/4), so the user's group always had a round ready to fill without waiting on strangers.
+
+Both apps type-check clean.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
