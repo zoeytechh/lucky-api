@@ -58,7 +58,7 @@ export async function requestOtp(phoneNumber: string): Promise<void> {
     },
   })
 
-  await sendSms(phoneNumber, `Your Lucky verification code is ${code}. It expires in 5 minutes.`)
+  await sendSms(phoneNumber, `Your Lucky You verification code is ${code}. It expires in 5 minutes.`)
 }
 
 export async function verifyOtp(phoneNumber: string, code: string): Promise<void> {
