@@ -15,15 +15,25 @@ router.get('/', async (req, res) => {
   })
 })
 
+// Numbered pages, not a flat limit — same reasoning as draw.routes.ts's
+// own pagination() helper: a far-back page is one bounded request, not
+// everything-so-far sitting in memory, once a wallet has months of
+// entries behind it.
 router.get('/transactions', async (req, res) => {
   const wallet = await getOrCreateWallet(prisma, req.user!.id)
-  const limit = Math.min(Number(req.query.limit) || 20, 100)
+  const pageSize = Math.min(Math.max(Number(req.query.pageSize) || 20, 1), 100)
+  const page = Math.max(Number(req.query.page) || 1, 1)
+  const skip = (page - 1) * pageSize
 
-  const entries = await prisma.ledgerEntry.findMany({
-    where: { walletId: wallet.id },
-    orderBy: { createdAt: 'desc' },
-    take: limit,
-  })
+  const [entries, total] = await Promise.all([
+    prisma.ledgerEntry.findMany({
+      where: { walletId: wallet.id },
+      orderBy: { createdAt: 'desc' },
+      take: pageSize,
+      skip,
+    }),
+    prisma.ledgerEntry.count({ where: { walletId: wallet.id } }),
+  ])
 
   res.json({
     transactions: entries.map((e) => ({
@@ -33,6 +43,9 @@ router.get('/transactions', async (req, res) => {
       balanceAfterMinor: e.balanceAfterMinor.toString(),
       createdAt: e.createdAt,
     })),
+    page,
+    pageSize,
+    total,
   })
 })
 
