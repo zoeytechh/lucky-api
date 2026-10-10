@@ -581,3 +581,20 @@ Two requests landed together while the user kept live-testing with friends.
 Both apps type-check clean.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
+
+---
+
+## 2026-10-10 — A real progress-ring loader, a pre-entry confirmation, and a mascot that actually dances
+
+Three requests from the user, plus a money-math audit prompted by the live testing.
+
+- **Money math audited, live, not just read.** Traced the full flow (entry debit → settlement split → payout) and then checked it against real data: pulled the 5 most recently settled production rounds and summed every entry's `payoutMinor`. All five balance exactly — total paid to winner + refunded equals total staked in, to the kobo, with zero stuck payouts. One theoretical note for the record: the payout-split formula (`WINNER_PAYOUT_MINOR = STAKE_MINOR × ROUND_SIZE / 2`, refund count via `Math.ceil`) is only exact for an *even* round size — both the real production default (1000) and the current test override (4) are even, so this isn't live risk, just worth remembering if that ever changes.
+- **The ring became a real progress-ring loader**, replacing the previous gold-to-white color blend from the entry above — the user pointed at a reference implementation (two overlaid SVG circles, a static base ring and a `stroke-dashoffset`-animated sweep) and asked for that instead, since a color fade didn't read as a loader the way an actual sweep does. `DrawRoll` now overlays a white stroke that sweeps clockwise from 12 o'clock over the gold ring beneath it, via a `pathLength`-normalized `stroke-dashoffset` driven by the same "time remaining until `revealAt`" duration as before — only the visual mechanism changed, not the timing contract. Verified live: visibly ~50% swept at the animation's midpoint.
+- **Entries now require an explicit confirmation.** Tapping Enter used to fire the real, money-moving request on a single tap — no room for an accidental click on a real-cash product. It now opens a confirm dialog stating the exact charge (computed from the round's own `entryCostMinor`/`stakeMinor`/`feeMinor`, not hardcoded) with Cancel / Yes, Enter; `handleEnter` itself only ever runs from the Yes button. Verified live end-to-end: Cancel dismisses with no entry placed, confirmed by the button still reading `ENTER ₦1,200` afterward.
+- **The mascot actually dances now.** The previous "dance" variant was the whole rigid figure wobbling as one unit — not very convincing. Rebuilt it with independent limbs (each a line from a fixed shoulder/hip pivot) swinging out of phase — arms alternating up/down, legs kicking apart and back, head bobbing on its own beat — instead of one uniform rotation. Also staggered the winner modal's own entrance (avatar pops in on a spring, name fades up, prize box scales in with a soft pulsing glow) rather than everything appearing at once.
+- **Verified the ring/modal features without touching the live round** (same technique as the entry above, since the user's group was still actively playing): temporarily forced `pendingSettlement` with an 8-second `revealAt`, screenshotted the sweep at t=0/t=4s/t=9.5s, then reverted before committing.
+- **Live production operations this session**: funded two more real accounts the user identified mid-test — `+2347069283585` ("Dili") and `+2347040078502` ("Maalvvaadaa") — ₦20,000 each, confirmed via wallet balance.
+
+Both apps type-check clean.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
