@@ -598,3 +598,18 @@ Three requests from the user, plus a money-math audit prompted by the live testi
 Both apps type-check clean.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
+
+---
+
+## 2026-10-10 — Closed a ghost-click gap in the entry confirmation, reverted the mascot rebuild
+
+The user reported a real one, caught through actual testing: the confirm dialog from the entry above would show, but the entry sometimes went through without anyone tapping "Yes."
+
+- **Root cause: a touch ghost-click, not a logic bug.** On a touch device, if the dialog renders exactly under a finger that's still touching the screen from the tap that opened it, the finger's release can land on "Yes, Enter" underneath and fire immediately — the confirmation exists in the DOM and gets tapped, just not deliberately. The dialog's Yes button now ignores taps for 350ms after opening (a `dialogArmed` flag, `disabled` until then). Verified precisely, not just by re-reading the code: fired a click directly on the real "YES, ENTER" button's own on-screen coordinates ~200ms after the dialog opened, then checked the round's `entryCount` via the API before, during, and after — unchanged throughout.
+- **Reverted the mascot's dance to the simple version.** The independent-limb rebuild from the entry above didn't look right in practice once the user saw it live — reverted `PartyMascot`'s `dance` variant back to the single-path figure with the bigger/faster bounce-rotate-scale loop, same as before that rebuild. The nav's own (non-dance) animation was never touched either way.
+- **Wording**: "entry fee" / "app fee" → "entry charge" / "app charge" in both the confirm dialog and the Enter button's caption, per direct request.
+- **Live production operations this session**: added filler entries to two new rounds as they opened (`round 669` → 1/4, `round 670` → 1/4) so the user always had a round ready; funded two more real accounts on request — `+2349074639302` ("Buzor") and `+2347069283585` ("Dili", a second top-up) — ₦20,000 each.
+
+Frontend-only changes, type-checks clean.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
