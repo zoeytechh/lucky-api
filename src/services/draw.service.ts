@@ -299,13 +299,13 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
       capacity: ROUND_SIZE,
     })
 
-    // "Almost full" — whichever's earlier of one slot left or 90% full
-    // (same formula the frontend uses for the in-app toast; see
-    // DrawSocketContext). slotNumber strictly increases by exactly 1 per
-    // entry within a round, so this threshold is crossed by exactly one
-    // entry, ever — no separate per-round dedupe needed the way the
-    // frontend's does (that one also has to handle a page reload
-    // re-discovering an already-passed threshold, which this doesn't).
+    // "Almost full" — 90% filled (same formula the frontend uses for the
+    // in-app toast; see DrawSocketContext). slotNumber strictly increases
+    // by exactly 1 per entry within a round, so this threshold is crossed
+    // by exactly one entry, ever — no separate per-round dedupe needed
+    // the way the frontend's does (that one also has to handle a page
+    // reload re-discovering an already-passed threshold, which this
+    // doesn't).
     //
     // Sent to every subscriber, not just the ones outside the round —
     // but with different content depending on which: someone already in
@@ -315,7 +315,7 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
     // — if that device currently has the app open, it suppresses the
     // popup and trusts the in-app toast that same live page is already
     // showing (Draw.tsx/DrawSocketContext), rather than double-notifying.
-    const almostFullThreshold = Math.min(ROUND_SIZE - 1, Math.floor(ROUND_SIZE * 0.9))
+    const almostFullThreshold = Math.floor(ROUND_SIZE * 0.9)
     if (!result.roundSettled && result.slotNumber === almostFullThreshold) {
       ;(async () => {
         try {
