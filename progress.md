@@ -660,3 +660,24 @@ The user asked for a second app-wide notification (a round about to close, same 
 Frontend-only change, type-checks clean.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database. Also now open, pending the user's call: real background push notifications.
+
+---
+
+## 2026-10-10 — Background push notifications: built, mostly verified, one leg still needs a real device
+
+The user asked to go ahead with the real background-push feature flagged as open in the entry above.
+
+- **Backend**: a VAPID key pair (generated, stored in `.env` locally — not yet on Render's production env), a new `PushSubscription` model (one row per subscribed browser/device, `endpoint` as the natural unique key), and `push.service.ts` wrapping `web-push` — `sendPushToUser`/`sendPushToAll` (optionally excluding one user), with a 404/410 response (the browser revoked or expired the subscription) cleaning up the stale row instead of retrying forever, and any other failure logged but never thrown, so a push problem can't take down the entry/settlement flow that triggered it. New routes: `GET /api/push/vapid-public-key` (public), `POST /api/push/subscribe`, `POST /api/push/unsubscribe`.
+- **Wired into the same two points that already broadcast over Socket.IO** (`draw.service.ts`): round settlement (winner gets "You won! 🎉", everyone else gets "We have a winner") and the identical almost-full threshold the in-app `AlmostFullToast` uses — no separate dedupe needed server-side, since `slotNumber` increases by exactly 1 per entry within a round, so the threshold is crossed by exactly one entry, ever.
+- **Frontend**: switched the service worker from `generateSW` to `injectManifest` (`src/sw.ts`) specifically so it could carry its own `push`/`notificationclick` handlers — `generateSW`'s fully auto-generated worker has no hook for this. The `navigateFallbackDenylist` behavior that used to live in `vite.config.ts`'s `workbox` option now lives directly in `sw.ts`'s own `NavigationRoute`. A new `usePushNotifications` hook handles the real opt-in (`Notification.requestPermission()` → `PushManager.subscribe()` → POST to the backend), wired to a toggle on the Profile page — deliberately not automatic on load, since an unprompted permission request is reliably auto-dismissed by browsers.
+- **Verified in layers — and honest about the one that couldn't be**:
+  - The build-strategy switch itself was the real regression risk here (not the push feature specifically) — confirmed the built `sw.js` contains all six expected listeners (Workbox's `install`/`activate`/`fetch` plus the three added ones), and confirmed live in a real browser that the service worker still registers and activates correctly, and that `UpdatePrompt`'s existing update-detection flow wasn't disturbed.
+  - The Notification-permission UI flow (ENABLE button appearing/disappearing correctly by permission state) was confirmed live.
+  - The backend's actual send path was verified for real: a syntactically real push-service endpoint (fake keys, since there was no real subscriber available) got a genuine VAPID-signed request from `web-push`, Google's push service correctly rejected the fake endpoint, and the 404/410 cleanup correctly removed the stale subscription row — `sendPushToUser` resolved cleanly throughout, never threw.
+  - **What's not verified**: a human actually seeing a push notification arrive on a real device. Chrome deliberately disables the Push API inside Playwright's default (incognito-style) automated browser contexts — a documented, intentional restriction, not a bug to work around — and switching to a persistent (non-incognito) browser profile to get around that hit a different wall in this sandbox: the service worker never registered at all across four separate attempts, with and without various permission-grant approaches. This is a tooling/environment limitation, not something in the shipped code; the pieces that *could* be verified (listed above) all check out individually. Real delivery — including with the app fully closed — still needs a manual check on an actual phone or browser.
+
+**Before this works for real users**: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` need setting on Render's production environment (generated and confirmed working locally only). `VAPID_SUBJECT` is a `mailto:` address — already set locally to the user's own.
+
+Both apps type-check clean.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database; setting the VAPID env vars on Render; a real-device confirmation that push notifications actually arrive.
