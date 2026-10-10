@@ -613,3 +613,18 @@ The user reported a real one, caught through actual testing: the confirm dialog 
 Frontend-only changes, type-checks clean.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
+
+---
+
+## 2026-10-10 — The update-refresh button was logging iOS users out instead of refreshing
+
+The user reported: tapping Refresh on the "new version available" banner moved iOS users to the login screen instead of just refreshing in place where they were.
+
+- **Root cause**: `handleRefresh` reloads the page after the new service worker takes over, and that reload normally restores the session silently via the cross-site refresh cookie (`SameSite=None`, required since the Vercel frontend and Render API are different domains). That cookie-based restore has been seen to fail specifically on iOS right after this exact kind of reload, dropping an otherwise mid-session user back to login — a device-specific cookie quirk, not something broken in the general login flow (which keeps working fine on normal reloads/reopens).
+- **The fix**: before reloading, `UpdatePrompt.tsx` now stashes the current, still-valid access token into `sessionStorage` (`stashAccessTokenForReload`); on the next boot, `restoreSession()` uses that directly instead of going through the cookie — bypassing whatever's failing for this one transition entirely — and only falls back to the normal cookie-based refresh if nothing's stashed or it turns out to be invalid.
+- **A real race this surfaced during testing, not a hypothetical one**: wrapped the whole restore sequence in the same shared-in-flight-promise pattern already used for `refreshSession` (see the 2026-10-05 M3 entry for the original version of this exact class of bug). React StrictMode's double-invoked effect was letting a *second*, redundant restore call find the stash already consumed by the first and fall through to a (deliberately blocked, in the test) cookie refresh — which nulled out the access token the first call had just set, even though `status` stayed `'authenticated'`, leaving the app stuck on a loading spinner forever.
+- **Verified precisely**: logged in for real, captured the access token from the live OTP response, stashed it, then used Playwright's request interception to outright block `POST /api/auth/refresh` (simulating the iOS failure) before reloading. Before the StrictMode fix: the app got stuck on a spinner with repeated 401s. After: the Draw page loaded correctly with real data (`ROUND 671 · 1 OF 4 · ENTER ₦1,200`), no login redirect, no stuck loader — despite the refresh endpoint being completely unreachable.
+
+Frontend-only change, type-checks clean.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
