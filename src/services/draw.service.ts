@@ -335,21 +335,35 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
     // WinnerModal/WinnerToast. Best-effort: a failed push send should
     // never fail the entry request that triggered it (already committed
     // and responded to by this point in every real sense that matters).
-    if (result.winnerUserId && result.winnerPayoutMinor) {
+    //
+    // Delayed until revealAt, not sent immediately — the winner is
+    // *decided* here, but every in-app viewer (the ring, the modal) only
+    // finds out at the server's own revealAt, 30-59s later. Sending the
+    // push the instant this runs spoiled that: the winner got "You won!"
+    // while their own ring was still mid-suspense, before the reveal
+    // they were watching had even happened. A plain setTimeout, not a
+    // persisted job — same tradeoff the reveal delay itself already
+    // makes client-side; REVEAL_MAX_MS tops out under a minute, so a
+    // mid-window server restart losing a push is an acceptable, rare
+    // edge rather than something worth a durable scheduler for.
+    if (result.winnerUserId && result.winnerPayoutMinor && result.revealAt) {
       const amount = formatNairaForPush(result.winnerPayoutMinor)
-      sendPushToUser(result.winnerUserId, {
-        title: 'You won! 🎉',
-        body: `Congratulations — you just won ${amount} in Round ${result.roundNumber}.`,
-        url: '/',
-      }).catch((err) => console.error('sendPushToUser (winner) failed:', err))
-      sendPushToAll(
-        {
-          title: 'We have a winner',
-          body: `${result.winnerDisplayName} just won ${amount} in Round ${result.roundNumber}.`,
+      const delayMs = Math.max(0, result.revealAt.getTime() - Date.now())
+      setTimeout(() => {
+        sendPushToUser(result.winnerUserId!, {
+          title: 'You won! 🎉',
+          body: `Congratulations — you just won ${amount} in Round ${result.roundNumber}.`,
           url: '/',
-        },
-        result.winnerUserId,
-      ).catch((err) => console.error('sendPushToAll (settled) failed:', err))
+        }).catch((err) => console.error('sendPushToUser (winner) failed:', err))
+        sendPushToAll(
+          {
+            title: 'We have a winner',
+            body: `${result.winnerDisplayName} just won ${amount} in Round ${result.roundNumber}.`,
+            url: '/',
+          },
+          result.winnerUserId!,
+        ).catch((err) => console.error('sendPushToAll (settled) failed:', err))
+      }, delayMs)
     }
 
     // Outside the round lock entirely — see payOutRound's own comment.
