@@ -681,3 +681,7 @@ The user asked to go ahead with the real background-push feature flagged as open
 Both apps type-check clean.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database; setting the VAPID env vars on Render; a real-device confirmation that push notifications actually arrive.
+
+**Closed out same day**: the user set the three VAPID env vars on Render (confirmed live — `/api/push/vapid-public-key` started returning the real key within seconds of being saved, matching the local value exactly) and then confirmed the last open piece directly: a real push notification arrived on their actual device, triggered by the almost-full threshold during a live production round (filled with two filler entries, the user's own third entry crossing the threshold). The one leg that couldn't be automated in this environment is now confirmed working end to end by the person it actually has to work for.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
