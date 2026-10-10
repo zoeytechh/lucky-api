@@ -3,8 +3,17 @@ import type { Prisma } from '../generated/prisma/client'
 import { ENTRY_COST_MINOR, FEE_MINOR, ROUND_SIZE, STAKE_MINOR, WINNER_PAYOUT_MINOR } from '../config/constants'
 import { prisma, runInTransaction } from '../lib/prisma'
 import { notifyWalletUpdate, tryGetIo } from '../realtime/socket'
+import { sendPushToAll, sendPushToUser } from './push.service'
 import { decideSettlement, payOutRound } from './settlement.service'
 import { credit, debit, getSystemUserId } from './wallet.service'
+
+// Push notification text only needs a quick, human-readable amount —
+// not the same precision/locale handling the frontend's formatNaira
+// does for on-screen display, so a small inline helper here rather than
+// a shared module for one use site.
+function formatNairaForPush(amountMinor: string): string {
+  return `₦${(Number(amountMinor) / 100).toLocaleString('en-NG')}`
+}
 
 export class InsufficientBalanceError extends Error {
   constructor() {
@@ -82,8 +91,15 @@ export type PlaceEntryResult = {
 // broadcast). entrantBalanceMinor is similarly internal — only present
 // on a genuine (non-replay) entry, used to push a live wallet update;
 // the HTTP response itself doesn't need it, the entrant's own client
-// already has it via refreshWallet().
-type InternalPlaceEntryResult = PlaceEntryResult & { isReplay: boolean; entrantBalanceMinor?: bigint }
+// already has it via refreshWallet(). winnerUserId is internal for the
+// same reason: needed here to target the winner's own push notification
+// separately from everyone else's, but not something the HTTP response
+// needs to carry.
+type InternalPlaceEntryResult = PlaceEntryResult & {
+  isReplay: boolean
+  entrantBalanceMinor?: bigint
+  winnerUserId?: string
+}
 
 type DrawEntryRow = { id: string; round_id: string; slot_number: number }
 type DrawEntryRowWithKey = DrawEntryRow & { idempotency_key: string }
@@ -219,6 +235,7 @@ async function placeEntryOnce(userId: string, idempotencyKey: string): Promise<I
       winnerDisplayName: settlement?.winnerDisplayName,
       winnerAvatarUrl: settlement?.winnerAvatarUrl,
       winnerPayoutMinor: settlement ? WINNER_PAYOUT_MINOR.toString() : undefined,
+      winnerUserId: settlement?.winnerUserId,
       revealAt: settlement?.revealAt,
       nextRoundId: settlement?.nextRoundId,
       nextRoundNumber: settlement?.nextRoundNumber,
@@ -281,6 +298,22 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
       entryCount: result.slotNumber,
       capacity: ROUND_SIZE,
     })
+
+    // "Almost full" — whichever's earlier of one slot left or 90% full
+    // (same formula the frontend uses for the in-app toast; see
+    // DrawSocketContext). slotNumber strictly increases by exactly 1 per
+    // entry within a round, so this threshold is crossed by exactly one
+    // entry, ever — no separate per-round dedupe needed the way the
+    // frontend's does (that one also has to handle a page reload
+    // re-discovering an already-passed threshold, which this doesn't).
+    const almostFullThreshold = Math.min(ROUND_SIZE - 1, Math.floor(ROUND_SIZE * 0.9))
+    if (!result.roundSettled && result.slotNumber === almostFullThreshold) {
+      sendPushToAll({
+        title: 'Almost full!',
+        body: `Round ${result.roundNumber} is at ${result.slotNumber} of ${ROUND_SIZE} — join now before it closes.`,
+        url: '/',
+      }).catch((err) => console.error('sendPushToAll (almost full) failed:', err))
+    }
   }
 
   if (result.roundSettled) {
@@ -296,6 +329,28 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
       nextRoundNumber: result.nextRoundNumber,
       nextEntriesOpenAt: result.nextEntriesOpenAt,
     })
+
+    // Winner gets their own push; everyone else gets the general
+    // announcement — same winner/not-winner split as the in-app
+    // WinnerModal/WinnerToast. Best-effort: a failed push send should
+    // never fail the entry request that triggered it (already committed
+    // and responded to by this point in every real sense that matters).
+    if (result.winnerUserId && result.winnerPayoutMinor) {
+      const amount = formatNairaForPush(result.winnerPayoutMinor)
+      sendPushToUser(result.winnerUserId, {
+        title: 'You won! 🎉',
+        body: `Congratulations — you just won ${amount} in Round ${result.roundNumber}.`,
+        url: '/',
+      }).catch((err) => console.error('sendPushToUser (winner) failed:', err))
+      sendPushToAll(
+        {
+          title: 'We have a winner',
+          body: `${result.winnerDisplayName} just won ${amount} in Round ${result.roundNumber}.`,
+          url: '/',
+        },
+        result.winnerUserId,
+      ).catch((err) => console.error('sendPushToAll (settled) failed:', err))
+    }
 
     // Outside the round lock entirely — see payOutRound's own comment.
     // Not swallowed silently: logged so a failed payout (whole-batch, or

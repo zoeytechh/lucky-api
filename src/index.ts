@@ -10,6 +10,7 @@ import authRoutes from './routes/auth.routes'
 import commentsRoutes from './routes/comments.routes'
 import drawRoutes from './routes/draw.routes'
 import profileRoutes from './routes/profile.routes'
+import pushRoutes from './routes/push.routes'
 import walletRoutes from './routes/wallet.routes'
 
 const app = express()
@@ -47,6 +48,7 @@ app.use('/api/profile', profileRoutes)
 app.use('/api/draw', drawRoutes)
 app.use('/api/wallet', walletRoutes)
 app.use('/api/comments', commentsRoutes)
+app.use('/api/push', pushRoutes)
 
 // Route modules are added here as each build-order step lands:
 // webhooks.routes, leaderboard.routes (see the plan).

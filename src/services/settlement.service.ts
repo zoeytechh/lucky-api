@@ -106,6 +106,7 @@ export async function decideSettlement(tx: Prisma.TransactionClient, roundId: st
   // — without a second query to re-derive what was just decided here.
   return {
     winnerEntryId: winnerId,
+    winnerUserId: winnerEntry.userId,
     winnerSlotNumber,
     winnerDisplayName: displayNameFor(winnerUser),
     winnerAvatarUrl: winnerUser.avatarUrl,

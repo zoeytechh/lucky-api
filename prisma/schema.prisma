@@ -38,10 +38,11 @@ model User {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  refreshTokens RefreshToken[]
-  wallet        Wallet?
-  drawEntries   DrawEntry[]
-  drawComments  DrawComment[]
+  refreshTokens     RefreshToken[]
+  wallet            Wallet?
+  drawEntries       DrawEntry[]
+  drawComments      DrawComment[]
+  pushSubscriptions PushSubscription[]
 
   @@map("users")
 }
@@ -232,4 +233,24 @@ model DrawComment {
 
   @@index([isHidden, createdAt])
   @@map("draw_comments")
+}
+
+// One row per browser/device subscribed to Web Push — a user with the
+// app on two phones has two rows. `endpoint` (the push service's unique
+// URL for this subscription) is the natural unique key, not userId,
+// since that's what PushManager.subscribe() actually returns and what
+// a re-subscribe would collide on. keysP256dh/keysAuth are the two
+// encryption keys the Push API requires, straight from the browser's
+// PushSubscriptionJSON — stored as opaque strings, never parsed here.
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id])
+  endpoint  String   @unique
+  keysP256dh String  @map("keys_p256dh")
+  keysAuth  String   @map("keys_auth")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
