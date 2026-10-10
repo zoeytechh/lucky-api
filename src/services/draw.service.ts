@@ -365,6 +365,33 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
       nextEntriesOpenAt: result.nextEntriesOpenAt,
     })
 
+    // Fired immediately, not delayed — distinct from the almost-full
+    // nudge above (which fires one entry early, as a heads-up) and from
+    // the winner push below (which waits for revealAt). This is the
+    // literal "it's full, drawing is happening right now" moment: every
+    // entrant in the round that JUST filled gets told, so someone who
+    // only had the earlier "about to start" nudge (a real gap at the
+    // real 1000-entry round size, not just the small testing size) still
+    // finds out the instant it's actually worth looking.
+    ;(async () => {
+      try {
+        const entrants = await prisma.drawEntry.findMany({
+          where: { roundId: result.roundId },
+          select: { userId: true },
+        })
+        const entrantIds = entrants.map((e) => e.userId)
+        if (entrantIds.length > 0) {
+          await sendPushToUserIds(entrantIds, {
+            title: 'Draw has started!',
+            body: `Round ${result.roundNumber} is full — the winner will be revealed any moment now.`,
+            url: '/',
+          })
+        }
+      } catch (err) {
+        console.error('draw-started push failed:', err)
+      }
+    })()
+
     // Only round participants get told who won — not every subscriber,
     // the way the almost-full nudge works. The one exception is a user
     // who hasn't played in 24h+ (notifyInactiveNonParticipants): they
