@@ -34,6 +34,16 @@ async function sendToSubscription(sub: SubRow, payload: PushPayload) {
     await webpush.sendNotification(
       { endpoint: sub.endpoint, keys: { p256dh: sub.keysP256dh, auth: sub.keysAuth } },
       JSON.stringify(payload),
+      // Without an explicit urgency, the Web Push Protocol lets the push
+      // service (FCM, for every Android/Chrome subscription here) treat
+      // the message as deferrable — exactly the symptom reported: a push
+      // arrives fine while the browser's background process is still
+      // active, but gets silently held back once the device settles into
+      // a deeper idle/Doze state after the app is fully closed, since
+      // Android only wakes a dozing device immediately for high-priority
+      // FCM messages. 'high' asks for the same "wake it now" treatment
+      // a real-money result like this should always get.
+      { urgency: 'high' },
     )
   } catch (err) {
     const statusCode = (err as { statusCode?: number })?.statusCode
