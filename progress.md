@@ -742,3 +742,18 @@ Three smaller, unrelated asks in the same stretch.
 Frontend changes type-check clean; backend change type-checks clean.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
+
+---
+
+## 2026-10-10 — A fourth notification moment: the literal instant a round fills
+
+The user asked whether entrants get told "the draw has started" with the same in-app/external split as the other notifications, and confirmed they also wanted a dedicated ping at the literal fill moment, not just the earlier almost-full nudge.
+
+- **Clarified first, since the existing almost-full push already uses "about to start" wording**: that one fires at the almost-full *threshold* (one entry before the real 1000-entry round fills), not the instant it actually fills — a real gap at production round size, even though the two are adjacent at the small testing size currently in use. The user confirmed they wanted a second, distinct notification at the literal fill moment too.
+- **Backend**: a new immediate (not delayed to `revealAt`, unlike the winner push) push block in `placeEntry`'s settlement branch — "Draw has started! Round X is full — the winner will be revealed any moment now." — sent to every entrant in the round that just filled. Reuses the same `sendPushToUserIds` primitive and the same visibility-based external/in-app suppression in `sw.ts` as every other push; no changes needed there.
+- **Frontend**: new `DrawStartedToast` component plus the matching state/effects in `DrawSocketContext` — mirrors `AlmostFullToast`'s entrant-check pattern (tri-state against `/api/draw/entries`), but entrant-only at the render level (a non-entrant gets nothing here, unlike almost-full's toast which still shows different copy either way) and gated on `progress.entryCount >= progress.capacity` rather than the 90%/one-slot-left threshold. Not shown on the Draw page, same reasoning as the other toasts — the ring already makes it obvious live.
+- **Verified live, fully isolated**: stood up a throwaway local Socket.IO server (the real `initSocket()`, not a fake) and a mocked-REST Playwright page pointed at it, then emitted a real `round:progress` event with `entryCount === capacity`. Entrant scenario: toast appeared with the correct copy. Non-entrant scenario: no toast, confirming the entrant-only gate. Neither scenario touched the shared database.
+
+Both apps type-check clean.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
