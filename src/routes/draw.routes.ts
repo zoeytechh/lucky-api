@@ -67,6 +67,42 @@ router.get('/current', async (_req, res) => {
   })
 })
 
+// The single most recently settled round's winner, regardless of whether
+// its reveal window is still active — unlike /current's `drawing`, which
+// is deliberately null once entriesOpenAt passes. Used only by the
+// frontend's app-wide winner notification (DrawSocketContext) to catch a
+// viewer up on a result they missed entirely (app closed/backgrounded
+// through the whole reveal), not by anything that gates entries.
+router.get('/last-settled', async (_req, res) => {
+  const round = await prisma.drawRound.findFirst({
+    where: { status: 'SETTLED' },
+    orderBy: { settledAt: 'desc' },
+  })
+  if (!round?.winnerEntryId) return res.json({ result: null })
+
+  const winnerEntry = await prisma.drawEntry.findUnique({
+    where: { id: round.winnerEntryId },
+    select: {
+      slotNumber: true,
+      payoutMinor: true,
+      user: { select: { fullName: true, phoneNumber: true, avatarUrl: true } },
+    },
+  })
+  if (!winnerEntry) return res.json({ result: null })
+
+  res.json({
+    result: {
+      roundId: round.id,
+      roundNumber: round.roundNumber,
+      winnerSlotNumber: winnerEntry.slotNumber,
+      winnerDisplayName: displayNameFor(winnerEntry.user),
+      winnerAvatarUrl: winnerEntry.user.avatarUrl,
+      payoutMinor: winnerEntry.payoutMinor?.toString() ?? null,
+      settledAt: round.settledAt,
+    },
+  })
+})
+
 const enterSchema = z.object({ idempotencyKey: z.string().min(10) })
 
 router.post('/entries', async (req, res) => {

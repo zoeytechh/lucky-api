@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Prisma } from '../generated/prisma/client'
-import { ENTRY_COST_MINOR, FEE_MINOR, ROUND_SIZE, STAKE_MINOR } from '../config/constants'
+import { ENTRY_COST_MINOR, FEE_MINOR, ROUND_SIZE, STAKE_MINOR, WINNER_PAYOUT_MINOR } from '../config/constants'
 import { prisma, runInTransaction } from '../lib/prisma'
 import { notifyWalletUpdate, tryGetIo } from '../realtime/socket'
 import { decideSettlement, payOutRound } from './settlement.service'
@@ -68,6 +68,7 @@ export type PlaceEntryResult = {
   winnerSlotNumber?: number
   winnerDisplayName?: string
   winnerAvatarUrl?: string | null
+  winnerPayoutMinor?: string
   revealAt?: Date
   nextRoundId?: string
   nextRoundNumber?: number
@@ -217,6 +218,7 @@ async function placeEntryOnce(userId: string, idempotencyKey: string): Promise<I
       winnerSlotNumber: settlement?.winnerSlotNumber,
       winnerDisplayName: settlement?.winnerDisplayName,
       winnerAvatarUrl: settlement?.winnerAvatarUrl,
+      winnerPayoutMinor: settlement ? WINNER_PAYOUT_MINOR.toString() : undefined,
       revealAt: settlement?.revealAt,
       nextRoundId: settlement?.nextRoundId,
       nextRoundNumber: settlement?.nextRoundNumber,
@@ -288,6 +290,7 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
       winnerSlotNumber: result.winnerSlotNumber,
       winnerDisplayName: result.winnerDisplayName,
       winnerAvatarUrl: result.winnerAvatarUrl,
+      winnerPayoutMinor: result.winnerPayoutMinor,
       revealAt: result.revealAt,
       nextRoundId: result.nextRoundId,
       nextRoundNumber: result.nextRoundNumber,
