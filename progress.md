@@ -684,4 +684,17 @@ Both apps type-check clean.
 
 **Closed out same day**: the user set the three VAPID env vars on Render (confirmed live — `/api/push/vapid-public-key` started returning the real key within seconds of being saved, matching the local value exactly) and then confirmed the last open piece directly: a real push notification arrived on their actual device, triggered by the almost-full threshold during a live production round (filled with two filler entries, the user's own third entry crossing the threshold). The one leg that couldn't be automated in this environment is now confirmed working end to end by the person it actually has to work for.
 
+---
+
+## 2026-10-10 — Fixed the winner push firing before the reveal, not after
+
+Real feedback from the user's own live confirmation above: the "You won!" push arrived *before* the draw actually finished — correct about having won, wrong about when they found out.
+
+- **Root cause**: the winner is *decided* the moment a round fills, but every in-app viewer (the ring's suspense countdown, the WinnerModal) only finds out at the server's own `revealAt`, 30-59s later — that's the entire point of the suspense window. The push notification wasn't respecting that boundary: it fired the instant settlement decided, so the winner's phone told them before their own ring had finished counting down.
+- **Fix**: the winner/settled push is now scheduled via `setTimeout` for the exact `revealAt` instant — the same server-authoritative timestamp the live in-app reveal already converges on, not a separate guess. (The almost-full push was never affected — there's no suspense window for that one, it's correct to fire immediately.)
+- **Verified precisely, not just by reading the diff**: logged the scheduled delay and the actual fire time for a real local settlement. Scheduled for `+46937ms` against a `revealAt` of `2026-10-10T12:54:35.752Z`; the push actually fired at `12:54:35.759Z` — 7ms off.
+- **The other two things asked alongside this**: confirmed already correct by re-reading the trigger code — `sendPushToAll` (excluding only the winner) already reaches every subscribed user, not a subset; and a real device needs *both* an updated service worker (one reload/revisit after this feature's own deploy — the `injectManifest` switch means anyone still running the pre-push service worker has no `push` handler at all, regardless of whether they're "subscribed") *and* the explicit Profile toggle tap, since browsers never allow silently auto-granting notification permission. Neither requirement can be removed; both were already true, just confirmed and explained rather than changed.
+
+Backend-only change, type-checks clean.
+
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
