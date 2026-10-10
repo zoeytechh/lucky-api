@@ -729,6 +729,16 @@ The user asked to double-check round entries still broadcast live to everyone's 
 
 Backend-only change, type-checks clean.
 
-**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
+---
+
+## 2026-10-10 — Paginated Wallet's recent activity, update-check on focus, a wording fix
+
+Three smaller, unrelated asks in the same stretch.
+
+- **`GET /api/wallet/transactions` now paginated** the same way `/winners` and `/recent-entries` already were — `page`/`pageSize`/`total` instead of a flat `limit=20` with nothing reachable past the first page. The Wallet page's "Recent activity" now mirrors `Winners.tsx` exactly: `Paginator`, numbered pages, each click a fresh backend request. Verified with a throwaway account seeded with 25 ledger rows: page 1 returned 20 with `total: 25`, page 2 returned the remaining 5, no overlap between them.
+- **`UpdatePrompt` now also checks for a new service worker the moment the tab becomes visible or regains focus**, not only on its existing 60s interval. The interval alone has a real gap: a backgrounded or minimized tab gets its timers throttled or paused entirely by the browser, so the one scenario that matters most here — someone reopening an app they left running a while ago — is exactly the case most likely to be missed by a throttled timer. This is very likely what was actually behind the `₦NaN` prize report two entries back: that investigation confirmed both the backend and the deployed bundle were already correct, which only makes sense if the affected device was running a stale cached copy the existing update check hadn't caught up with yet.
+- **Wording**: "entry charge" → "entry fee" in both of the Draw page's cost breakdowns (the enter-confirmation dialog and the inline cost line), matching how the rest of the app already refers to it.
+
+Frontend changes type-check clean; backend change type-checks clean.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
