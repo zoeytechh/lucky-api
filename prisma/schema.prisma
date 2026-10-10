@@ -37,6 +37,13 @@ model User {
   kycStatus   KycStatus @default(NONE) @map("kyc_status")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
+  // Last time this user got a "winner" push despite not having played
+  // the round it was about — the one-time-per-inactivity-stretch
+  // re-engagement nudge (see push.service.ts's
+  // notifyInactiveNonParticipants). Compared against their own most
+  // recent DrawEntry.enteredAt each time: null or older than that means
+  // they're eligible again, since playing resets the stretch.
+  lastReengagementPushAt DateTime? @map("last_reengagement_push_at")
 
   refreshTokens     RefreshToken[]
   wallet            Wallet?

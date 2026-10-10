@@ -3,7 +3,7 @@ import type { Prisma } from '../generated/prisma/client'
 import { ENTRY_COST_MINOR, FEE_MINOR, ROUND_SIZE, STAKE_MINOR, WINNER_PAYOUT_MINOR } from '../config/constants'
 import { prisma, runInTransaction } from '../lib/prisma'
 import { notifyWalletUpdate, tryGetIo } from '../realtime/socket'
-import { sendPushToAll, sendPushToUser } from './push.service'
+import { notifyInactiveNonParticipants, sendPushToUserIds } from './push.service'
 import { decideSettlement, payOutRound } from './settlement.service'
 import { credit, debit, getSystemUserId } from './wallet.service'
 
@@ -306,13 +306,48 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
     // entry, ever — no separate per-round dedupe needed the way the
     // frontend's does (that one also has to handle a page reload
     // re-discovering an already-passed threshold, which this doesn't).
+    //
+    // Sent to every subscriber, not just the ones outside the round —
+    // but with different content depending on which: someone already in
+    // doesn't need "join now", they need "it's about to start". Always
+    // sent as a real push either way; whether an OS popup actually shows
+    // for a given recipient is the service worker's own call (src/sw.ts)
+    // — if that device currently has the app open, it suppresses the
+    // popup and trusts the in-app toast that same live page is already
+    // showing (Draw.tsx/DrawSocketContext), rather than double-notifying.
     const almostFullThreshold = Math.min(ROUND_SIZE - 1, Math.floor(ROUND_SIZE * 0.9))
     if (!result.roundSettled && result.slotNumber === almostFullThreshold) {
-      sendPushToAll({
-        title: 'Almost full!',
-        body: `Round ${result.roundNumber} is at ${result.slotNumber} of ${ROUND_SIZE} — join now before it closes.`,
-        url: '/',
-      }).catch((err) => console.error('sendPushToAll (almost full) failed:', err))
+      ;(async () => {
+        try {
+          const entrants = await prisma.drawEntry.findMany({
+            where: { roundId: result.roundId },
+            select: { userId: true },
+          })
+          const entrantIds = entrants.map((e) => e.userId)
+
+          if (entrantIds.length > 0) {
+            await sendPushToUserIds(entrantIds, {
+              title: 'Draw about to start',
+              body: `Round ${result.roundNumber} is filling up — the draw starts soon.`,
+              url: '/',
+            })
+          }
+
+          const allSubscriberIds = (
+            await prisma.pushSubscription.findMany({ select: { userId: true }, distinct: ['userId'] })
+          ).map((s) => s.userId)
+          const nonEntrantIds = allSubscriberIds.filter((id) => !entrantIds.includes(id))
+          if (nonEntrantIds.length > 0) {
+            await sendPushToUserIds(nonEntrantIds, {
+              title: 'Almost full!',
+              body: `Round ${result.roundNumber} is at ${result.slotNumber} of ${ROUND_SIZE} — join now before it closes.`,
+              url: '/',
+            })
+          }
+        } catch (err) {
+          console.error('almost-full push failed:', err)
+        }
+      })()
     }
   }
 
@@ -330,11 +365,14 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
       nextEntriesOpenAt: result.nextEntriesOpenAt,
     })
 
-    // Winner gets their own push; everyone else gets the general
-    // announcement — same winner/not-winner split as the in-app
-    // WinnerModal/WinnerToast. Best-effort: a failed push send should
-    // never fail the entry request that triggered it (already committed
-    // and responded to by this point in every real sense that matters).
+    // Only round participants get told who won — not every subscriber,
+    // the way the almost-full nudge works. The one exception is a user
+    // who hasn't played in 24h+ (notifyInactiveNonParticipants): they
+    // still get told once per inactive stretch, as a hook back into the
+    // app, even though this round wasn't theirs. Best-effort throughout:
+    // a failed push send should never fail the entry request that
+    // triggered it (already committed and responded to by this point in
+    // every real sense that matters).
     //
     // Delayed until revealAt, not sent immediately — the winner is
     // *decided* here, but every in-app viewer (the ring, the modal) only
@@ -349,20 +387,34 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
     if (result.winnerUserId && result.winnerPayoutMinor && result.revealAt) {
       const amount = formatNairaForPush(result.winnerPayoutMinor)
       const delayMs = Math.max(0, result.revealAt.getTime() - Date.now())
-      setTimeout(() => {
-        sendPushToUser(result.winnerUserId!, {
-          title: 'You won! 🎉',
-          body: `Congratulations — you just won ${amount} in Round ${result.roundNumber}.`,
-          url: '/',
-        }).catch((err) => console.error('sendPushToUser (winner) failed:', err))
-        sendPushToAll(
-          {
+      const roundId = result.roundId
+      const winnerUserId = result.winnerUserId
+      setTimeout(async () => {
+        try {
+          sendPushToUserIds([winnerUserId], {
+            title: 'You won! 🎉',
+            body: `Congratulations — you just won ${amount} in Round ${result.roundNumber}.`,
+            url: '/',
+          }).catch((err) => console.error('sendPushToUserIds (winner) failed:', err))
+
+          const entrants = await prisma.drawEntry.findMany({
+            where: { roundId },
+            select: { userId: true },
+          })
+          const participantIds = entrants.map((e) => e.userId).filter((id) => id !== winnerUserId)
+          const announcement = {
             title: 'We have a winner',
             body: `${result.winnerDisplayName} just won ${amount} in Round ${result.roundNumber}.`,
             url: '/',
-          },
-          result.winnerUserId!,
-        ).catch((err) => console.error('sendPushToAll (settled) failed:', err))
+          }
+
+          if (participantIds.length > 0) {
+            await sendPushToUserIds(participantIds, announcement)
+          }
+          await notifyInactiveNonParticipants([winnerUserId, ...participantIds], announcement)
+        } catch (err) {
+          console.error('settled push failed:', err)
+        }
       }, delayMs)
     }
 

@@ -54,11 +54,80 @@ export async function sendPushToUser(userId: string, payload: PushPayload) {
   await Promise.allSettled(subs.map((s) => sendToSubscription(s, payload)))
 }
 
-/** Pushes to every subscribed device app-wide, optionally skipping one user's own (e.g. the winner, who gets their own push separately). */
-export async function sendPushToAll(payload: PushPayload, excludeUserId?: string) {
+/**
+ * Pushes to every device belonging to any user in the given list —
+ * always sent to everyone it names (unlike sendPushToUser's single
+ * target, this doesn't skip anyone). Whether an OS notification
+ * actually *shows* for a given recipient is a separate decision the
+ * service worker itself makes (see src/sw.ts): if that device currently
+ * has the app open and visible, it suppresses the popup and trusts the
+ * in-app toast that same live page is already showing instead. The
+ * caller here never needs to know which — it just names who should get
+ * the content.
+ */
+export async function sendPushToUserIds(userIds: string[], payload: PushPayload) {
+  if (userIds.length === 0) return
   if (!configureWebPush()) return
-  const subs = await prisma.pushSubscription.findMany(
-    excludeUserId ? { where: { userId: { not: excludeUserId } } } : undefined,
-  )
+  const subs = await prisma.pushSubscription.findMany({ where: { userId: { in: userIds } } })
   await Promise.allSettled(subs.map((s) => sendToSubscription(s, payload)))
+}
+
+// How long without placing an entry counts as "inactive" for the
+// re-engagement nudge below.
+const INACTIVITY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * The exception to "only round participants get told who won": a user
+ * who hasn't played in 24h+ still gets told about a winner once, as a
+ * hook back into the app — not every single round while they stay away,
+ * just once per inactive stretch. Eligibility resets the moment they
+ * play again (their own next entry clears the "already nudged" state,
+ * since it's compared against their *own* most recent entry, not a
+ * fixed clock).
+ *
+ * excludeUserIds should be the round's own participants (and the
+ * winner) — they already got their own push from the caller and don't
+ * need this one too.
+ */
+export async function notifyInactiveNonParticipants(excludeUserIds: string[], payload: PushPayload) {
+  if (!configureWebPush()) return
+
+  const candidates = await prisma.pushSubscription.findMany({
+    where: excludeUserIds.length > 0 ? { userId: { notIn: excludeUserIds } } : undefined,
+    select: { userId: true },
+    distinct: ['userId'],
+  })
+  if (candidates.length === 0) return
+  const candidateIds = candidates.map((c) => c.userId)
+
+  const [users, lastEntries] = await Promise.all([
+    prisma.user.findMany({
+      where: { id: { in: candidateIds } },
+      select: { id: true, lastReengagementPushAt: true },
+    }),
+    prisma.drawEntry.groupBy({
+      by: ['userId'],
+      where: { userId: { in: candidateIds } },
+      _max: { enteredAt: true },
+    }),
+  ])
+  const lastPlayedByUser = new Map(lastEntries.map((e) => [e.userId, e._max.enteredAt]))
+
+  const cutoff = new Date(Date.now() - INACTIVITY_MS)
+  const toNotify: string[] = []
+  for (const user of users) {
+    const lastPlayed = lastPlayedByUser.get(user.id) ?? null
+    const inactive = !lastPlayed || lastPlayed < cutoff
+    if (!inactive) continue
+    // Already nudged since whatever their last entry was (or ever, if
+    // they've never played) — don't nudge again until they play and go
+    // quiet for another full stretch.
+    const alreadyNudged = user.lastReengagementPushAt && (!lastPlayed || user.lastReengagementPushAt > lastPlayed)
+    if (alreadyNudged) continue
+    toNotify.push(user.id)
+  }
+  if (toNotify.length === 0) return
+
+  await sendPushToUserIds(toNotify, payload)
+  await prisma.user.updateMany({ where: { id: { in: toNotify } }, data: { lastReengagementPushAt: new Date() } })
 }
