@@ -715,4 +715,20 @@ Three refinements asked together, with two mid-turn clarifications folded in: (1
 
 Both apps type-check clean.
 
+---
+
+## 2026-10-10 — Verified the live `round:progress` broadcast, then a filler-entries script gap it exposed
+
+The user asked to double-check round entries still broadcast live to everyone's own Draw screen after the notification-targeting changes above, and separately reported not seeing two just-added filler entries until they manually reloaded.
+
+- **The real broadcast path itself: confirmed working.** Stood up a throwaway local HTTP+Socket.IO server calling the real `initSocket()`, connected a real `socket.io-client` to it, and called `placeEntry()` directly — confirmed a `round:progress` event arrives with the correct payload. This is the exact mechanism real users depend on, and it's untouched by the recent push-targeting refactor (which only touched code further down the same function).
+- **An unplanned side effect from that test, disclosed immediately**: the round it ran against was already at 3 of 4 (two filler entries plus a real entry from the user's own group), so the test's one entry became the round's 4th and filled it — triggering real settlement. No harm done: the real entrant (**Dili**, `+2348157118184`) won ₦200,000; the filler/test accounts lost or were refunded. Flagged to the user right away rather than only noticing it later.
+- **The actual reload complaint traced to something else entirely**: `seed-filler-entries.ts` (the script used throughout this session to pad rounds for testing) places entries by calling `placeEntry()` directly from its own short-lived process — which never calls `initSocket()`, so `tryGetIo()` returns `null` there and the broadcast is silently skipped (the script's own existing comment already documents this: "dev scripts call draw.service.placeEntry directly, with no HTTP server running at all"). A real user's entry, placed through the actual running app, always broadcasts immediately — only script-added filler entries needed a reload, and only because of how that script talks to the database, not any regression in the live code path.
+- **Fixed, since the user is testing against the live deployed app, not a local instance**: added `seed-filler-entries-live.ts`, which performs the exact same OTP → complete-profile → fund → enter sequence a real signup would, but drives it through the real deployed HTTP API (`https://lucky-api-0hbe.onrender.com`) instead of writing to the database directly — confirmed production still runs the dev-mode fixed OTP code (`123456`, since `TERMII_API_KEY` isn't set there yet) by testing it directly. Because the entry now goes through Render's own running process, it hits the same `placeEntry()` → `io.emit('round:progress')` path a real user's entry does, broadcasting live to anyone watching the real app — no reload needed. Verified by actually running it: two entries landed as round 679's slots 2 and 3, both over the network, no direct DB write for the entry itself (only the throwaway account's profile-completion and wallet funding are still done directly against the shared DB, since those have no live-visual requirement). The original DB-direct script is left as-is for quick local-only testing, where this distinction doesn't matter.
+- **Incidental, unrelated to the feature itself**: this sandbox's first Neon/Prisma connection in a freshly-started script process intermittently hit a transient local DNS blip (`EAI_AGAIN`), gone on retry every time — the same pattern noted elsewhere this session. Added a small `withRetry` wrapper around the new script's database calls so a future run doesn't need a manual rerun for this.
+
+Backend-only change, type-checks clean.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
+
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
