@@ -628,3 +628,19 @@ The user reported: tapping Refresh on the "new version available" banner moved i
 Frontend-only change, type-checks clean.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
+
+---
+
+## 2026-10-10 — Winner announcements now work from anywhere in the app
+
+The user filed three related gaps, all really the same root cause: the entire suspense/reveal sequence — and the winner modal it fed — lived entirely inside Draw.tsx's own local state. Navigate to Wallet mid-reveal and the component unmounted, taking the whole thing with it; be gone when a round concluded (backgrounded, or the app fully closed) and there was no way to find out who won at all, even back on the Draw page, once the live reveal window had passed.
+
+- **Lifted the whole reveal sequence into a new `DrawSocketProvider`**, mounted once in `App.tsx` above the routed `Outlet` instead of inside the page that kept getting unmounted. It owns the socket connection, the settlement queue, the suspense countdown to `revealAt`, and the hold-until-`nextEntriesOpenAt` — all moved verbatim from Draw.tsx, just living somewhere navigation can't destroy. Draw.tsx now reads `progress`/`pendingSettlement`/`revealWinnerSlot` from context instead of owning them, and still runs its own `load()` to refresh its own round/entries display once a reveal it was watching concludes.
+- **Split into two outcomes, per the user's explicit ask**: the actual winner gets the existing full `WinnerModal`; everyone else gets a new lightweight, auto-dismissing `WinnerToast` (name, avatar, prize, 6s). Both render directly from the provider, so they appear regardless of which page happens to be open — confirmed live by watching a toast fire while sitting on the Wallet page, not Draw. "Is this viewer the winner" is now a small independent fetch of the viewer's own recent entries at announcement time, not borrowed from Draw.tsx's local state (which wouldn't exist if the viewer isn't even on that page).
+- **A second catch-up path, for the gap the existing one didn't cover.** The pre-existing "still mid-reveal" catch-up (`/current`'s `drawing` field) only helps if a viewer arrives *during* the ~34-63s reveal+hold window — background the app for longer than that and it's already closed by the time you're back, with nothing left to catch. New `GET /api/draw/last-settled` (lucky-api) returns the most recent settled round's winner regardless of whether that window is still open, and the provider checks it on mount whenever nothing's currently drawing — gated to the last 3 minutes (old news past that isn't resurfaced) and deduped per-round via `localStorage` so the same result never announces twice across reloads.
+- **`winnerPayoutMinor`** added to both the `round:settled` broadcast and the settled `POST /entries` response (lucky-api) — the global announcement needed the prize amount without depending on whatever page's locally-fetched round data happened to have it.
+- **Verified in layers, not just by reading the diff**: two mocked-response tests (`/last-settled` + `/entries` intercepted) confirmed the full modal shows for an actual winner and the toast shows — and survives a real client-side navigation to another page — for everyone else. Then a fully real, unmocked test: filled a local round for real, and a separate watcher account sitting on the *Wallet* page (not Draw) correctly caught up on the still-drawing round via `/current`'s `drawing` field, counted down to the real server `revealAt`, and showed the toast there the moment it revealed — proving the live path and the "wrong page" scenario together, with real data.
+
+Both apps type-check clean.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
