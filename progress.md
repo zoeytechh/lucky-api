@@ -646,3 +646,17 @@ The user filed three related gaps, all really the same root cause: the entire su
 Both apps type-check clean.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
+
+---
+
+## 2026-10-10 — A round-almost-full notification, and the background-push question answered
+
+The user asked for a second app-wide notification (a round about to close, same idea as the winner announcement) and a direct question: is a real background/closed-app push notification possible for a PWA like this one?
+
+- **Answered the push question directly, not implemented yet**: yes, with real platform limits worth having on record — Android delivers push even with the app fully closed, once it's been opened once and permission granted; iOS only works for an install-to-home-screen PWA (iOS 16.4+), nothing for a regular Safari tab; desktop Chrome/Edge/Firefox work either way. It's genuine new infrastructure, not a UI tweak — VAPID keys, a subscriptions table, a service worker `push` handler, and server-side triggers calling out via `web-push` — scoped as a separate, larger feature pending the user's decision to proceed, not bundled into this entry.
+- **`AlmostFullToast`** — the other half of what *is* already buildable with the existing architecture. Fires the first time a round's `entryCount` crosses whichever's earlier of "one slot left" or 90% full (so it means something for both the small test round size and a real 1000-entry one, instead of a threshold that's effectively "already full"), shown everywhere except the Draw page itself — the ring there already shows the same thing live, so a toast on top would just be noise. Checked on the live `progress` broadcast and once on mount (via the same `/current` fetch `DrawSocketContext` already does for the drawing catch-up), so a round already past the threshold when the app opens still notifies; deduped per round so it only ever fires once.
+- **Verified live**: filled a local round to 3 of 4 while a watcher sat on the Wallet page — "Round 674 is almost full — 3 of 4. Join now!" appeared the instant the threshold crossed, linking back to Draw.
+
+Frontend-only change, type-checks clean.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database. Also now open, pending the user's call: real background push notifications.
