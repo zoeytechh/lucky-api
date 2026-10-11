@@ -773,3 +773,17 @@ The user asked for an admin page holding the app's wallet (where the ₦200 entr
 Both apps type-check clean.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database. Also now open: an actual automated daily leaderboard computation (ranking by ₦ spent) to feed this page's intended main use case — today this is only the payout mechanism, with no automated "who's actually in the top 3 today" source yet.
+
+---
+
+## 2026-10-11 — "Recent entries" showing stale data on a tab left open
+
+The user reported not seeing today's entries in their Recent Entries view right after playing.
+
+- **Checked the actual source of truth first, not the UI**: queried the database directly for the account in question — both of today's entries were there, correctly recorded, correct timestamps. Then hit the live `/api/draw/recent-entries` API as that exact account — same result, correctly returned, in order, with the right total count. Backend and API both confirmed correct before touching any frontend code.
+- **Root cause: same stale-display class as the `₦NaN` report two entries back**, just a different trigger — both `Draw.tsx`'s inline "recent entries" widget and the dedicated `RecentEntries.tsx` page only ever fetched once, on mount (or, for the dedicated page, on an explicit page-number click). A tab left open from before the new entry was placed — exactly what happens when someone plays, then checks back on an already-open tab — had nothing telling it anything had changed.
+- **Fixed the same way `UpdatePrompt` already was**: both now also refetch silently when the tab becomes visible or regains focus, not just on mount. Same pattern, same reasoning, now applied to the two places someone would actually notice stale data after playing.
+
+Frontend-only change, type-checks clean.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database; the automated daily leaderboard computation.
