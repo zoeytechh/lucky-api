@@ -6,6 +6,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { scheduleCommentExpiry } from './jobs/commentExpiry'
 import { prisma } from './lib/prisma'
 import { initSocket } from './realtime/socket'
+import adminRoutes from './routes/admin.routes'
 import authRoutes from './routes/auth.routes'
 import commentsRoutes from './routes/comments.routes'
 import drawRoutes from './routes/draw.routes'
@@ -49,6 +50,7 @@ app.use('/api/draw', drawRoutes)
 app.use('/api/wallet', walletRoutes)
 app.use('/api/comments', commentsRoutes)
 app.use('/api/push', pushRoutes)
+app.use('/api/admin', adminRoutes)
 
 // Route modules are added here as each build-order step lands:
 // webhooks.routes, leaderboard.routes (see the plan).

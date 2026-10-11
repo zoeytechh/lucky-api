@@ -32,6 +32,18 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 }
 
+// Gates the admin wallet/payout routes — role==='ADMIN' only, no self-
+// service way to become one (see admin.routes.ts's own comment). Checked
+// after requireAuth, same as requireCompleteProfile, so req.user is
+// already populated.
+export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) return res.status(401).json({ message: 'Not authenticated' })
+  if (req.user.role !== 'ADMIN') {
+    return res.status(403).json({ message: 'Admin access required', code: 'ADMIN_REQUIRED' })
+  }
+  next()
+}
+
 // A real display name is as mandatory as the avatar — both exist for the
 // same reason (see the PRD's accountability rationale): a winner reveal
 // or a public feed showing a masked phone number instead of a name reads
