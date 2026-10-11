@@ -805,3 +805,18 @@ The user asked for a way to notify someone when their comment gets a reply, offe
 Both apps type-check clean.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database; the automated daily leaderboard computation.
+
+---
+
+## 2026-10-11 — Comment feed redesigns, two real bug fixes, a stronger expiry rule
+
+Several smaller asks in sequence.
+
+- **Comment feed restyled twice, settling on Facebook-style threading.** First pass: WhatsApp-style bubbles (own messages right-aligned, everyone else's left). The user then asked for Facebook-style instead — replies nest directly beneath their thread's top-level comment, indented and connected by a vertical line, oldest-first within the thread. Since a reply only ever carries its immediate parent, a reply-to-a-reply's thread root is found by walking that chain through whatever's currently loaded (`findThreadRoot` in `CommentFeed.tsx`) and flattens to the same one indent level a direct reply gets — Facebook's own behavior, not infinite nesting. A reply whose root isn't loaded (expired or scrolled past the cap) falls back to showing as its own entry rather than vanishing. Verified visually against a mocked thread covering all three shapes (direct reply, reply-to-a-reply, orphan) before shipping. Own name now shown in a distinct color (first white, then changed to match the "Comments" header's own muted tone) as the "is this mine?" cue the bubble-position split used to carry.
+- **Real bug: `DrawRoll`'s ring dropped the remaining-entrants count the instant a viewer had their own slot to show** — "YOUR NUMBER" replaced "OF &lt;capacity&gt;" outright instead of alongside it, so someone who'd already entered had no way to see how many more the round still needed. Now reads "YOUR NUMBER · N LEFT"; the more prominent caption under the Enter button got the same fix ("Waiting for N more entrants…" instead of a generic message). Verified visually with a mocked 2-of-4 round.
+- **Insufficient-balance entry was already blocked server-side** (`placeEntry` has always checked this before the round lock is even touched) — confirmed live with two real accounts (zero balance, and one kobo short of ₦1,200), both correctly rejected with `402 INSUFFICIENT_BALANCE`. Added the matching frontend nicety on top: the Enter button now disables itself and explains why, with a link to top up, instead of letting someone tap and wait to be told no.
+- **A thread's lifetime is now governed by its root's age, not each reply's own.** Previously, an expired root just unlinked its replies (`onDelete: SetNull`), leaving them behind as orphaned top-level-looking comments no matter how old they actually were. Now (`onDelete: Cascade`) deleting an expired root takes every reply beneath it down too, transitively — a reply can never outlive the thread it's attached to, which is what was actually asked for ("when a text is 24hrs old, that text and its replies should all be deleted"). `expireOldComments()` now only checks top-level comments against the cutoff directly; a recursive CTE resolves the complete affected-id set before deleting, so connected clients get told about every removed reply, not just the root. Verified live: a 25h-old root with two fresh replies (one direct, one two levels deep) were all deleted together in one pass; an unrelated fresh thread was correctly left untouched.
+
+Both apps type-check clean.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database; the automated daily leaderboard computation.
