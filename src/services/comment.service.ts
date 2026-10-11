@@ -100,16 +100,42 @@ export const COMMENT_TTL_MS = 24 * 60 * 60 * 1000
 // jobs/commentExpiry.ts), not from any HTTP route. Returns the ids
 // actually deleted, so the caller can tell connected clients exactly
 // which rows to drop rather than re-syncing the whole feed.
+//
+// A thread's lifetime is governed by its root, not each reply's own age
+// — only top-level comments (replyToId null) are checked against the
+// cutoff directly. Deleting an expired root cascades (schema's
+// onDelete: Cascade) to every reply beneath it, transitively, however
+// recently any of them were posted — a reply can never outlive the root
+// it's attached to. (A reply's createdAt is always >= its root's, so the
+// root is always the first thing in its own thread to reach the cutoff;
+// this can't leave a stale-but-young reply behind the other way around.)
 export async function expireOldComments(): Promise<string[]> {
   const cutoff = new Date(Date.now() - COMMENT_TTL_MS)
-  const expired = await prisma.drawComment.findMany({
-    where: { createdAt: { lt: cutoff } },
+  const expiredRoots = await prisma.drawComment.findMany({
+    where: { replyToId: null, createdAt: { lt: cutoff } },
     select: { id: true },
   })
-  if (expired.length === 0) return []
-  const ids = expired.map((c) => c.id)
-  await prisma.drawComment.deleteMany({ where: { id: { in: ids } } })
-  return ids
+  if (expiredRoots.length === 0) return []
+  const rootIds = expiredRoots.map((c) => c.id)
+
+  // The delete itself only needs the root ids (Cascade handles the
+  // rest), but connected clients need the *complete* list of what's
+  // about to disappear — otherwise a reply would linger in an
+  // already-loaded feed with its thread root gone. Resolved before the
+  // delete, while the rows (and the FK relationships the CTE walks) are
+  // still there to query.
+  const affected = await prisma.$queryRaw<{ id: string }[]>`
+    WITH RECURSIVE thread AS (
+      SELECT id FROM draw_comments WHERE id = ANY(${rootIds})
+      UNION ALL
+      SELECT dc.id FROM draw_comments dc JOIN thread t ON dc.reply_to_id = t.id
+    )
+    SELECT id FROM thread
+  `
+  const allIds = affected.map((r) => r.id)
+
+  await prisma.drawComment.deleteMany({ where: { id: { in: rootIds } } })
+  return allIds
 }
 
 export async function listRecentComments(limit = MAX_RECENT_COMMENTS): Promise<CommentWithUser[]> {

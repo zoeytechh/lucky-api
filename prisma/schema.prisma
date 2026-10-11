@@ -239,13 +239,15 @@ model DrawComment {
   createdAt DateTime @default(now()) @map("created_at")
 
   // Optional reply target — a comment with no replyToId is a normal
-  // top-level post. SetNull (not Cascade) on delete: a comment's own 24h
-  // expiry (see comment.service.ts) shouldn't take its replies down with
-  // it, just un-link them back to looking like a normal top-level
-  // comment. Self-relation needs an explicit name since there's only one
+  // top-level post. Cascade on delete: a thread's lifetime is governed
+  // by its root's age, not each reply's own (see expireOldComments in
+  // comment.service.ts, which only ever checks top-level comments
+  // against the 24h cutoff) — deleting a root takes every reply beneath
+  // it down too, transitively, however recently any of them were
+  // posted. Self-relation needs an explicit name since there's only one
   // other relation field (user) that could otherwise be ambiguous.
   replyToId String?       @map("reply_to_id")
-  replyTo   DrawComment?  @relation("CommentReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replyTo   DrawComment?  @relation("CommentReplies", fields: [replyToId], references: [id], onDelete: Cascade)
   replies   DrawComment[] @relation("CommentReplies")
 
   @@index([isHidden, createdAt])
