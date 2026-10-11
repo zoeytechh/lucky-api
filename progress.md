@@ -757,3 +757,19 @@ The user asked whether entrants get told "the draw has started" with the same in
 Both apps type-check clean.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database.
+
+---
+
+## 2026-10-11 — An admin page for the SYSTEM wallet and manual payouts
+
+The user asked for an admin page holding the app's wallet (where the ₦200 entry fees land) and a way to send money from it to winners and the daily top leaders.
+
+- **Reframed against what already exists, not built blind**: the SYSTEM wallet already auto-collects every entry fee (`draw.service.ts`, unchanged), and winner payouts already happen automatically out of each round's own stake pool at settlement — neither needed any admin action. What was actually missing: the daily top-3 leaderboard prize has no automated payout mechanism at all (flagged as an open item in this file for a while), so there was no way to pay it out. Built as a general manual-payout tool from the SYSTEM wallet, which covers that gap and doubles as an ad-hoc channel for anything else (a correction, a bonus) without needing a new one-off script each time.
+- **Backend**: new `requireAdmin` middleware (`role === 'ADMIN'`, 403 otherwise) and `admin.routes.ts` — `GET /wallet` (SYSTEM balance), `GET /sends` (audit trail: every past manual payout, newest first, recipient name resolved via the ledger entry's own `referenceId`), `POST /send` (phone + amount + optional note, moves money SYSTEM → recipient inside one transaction via the same `debit()`/`credit()` primitives every other wallet movement in the app already goes through — same row-locking, same ledger-correctness guarantees, nothing new invented). Logged as `LedgerEntryType.LEADERBOARD_PRIZE` — already defined in the schema, never previously used by any code path.
+- **No self-service way to become an ADMIN** (by design — there's no signup flow for it, matching how `SYSTEM` itself is only ever created in code, never through a user-facing path). The three admin accounts the user named were set directly in the database by hand.
+- **Frontend**: new `/admin` page — balance, a send form, the audit trail — plus an "Admin" nav link that only renders for `role === 'ADMIN'` in both the desktop nav and `MobileMenu`. The page itself also redirects anyone else away directly, so a non-admin who somehow lands on the URL doesn't just see a dead end.
+- **Verified live, for real, not just read through**: granted ADMIN to the three given phone numbers, then ran the actual flow against production — `GET /wallet` → ₦172,800, sent a real ₦50 test payout to one of them with a note, confirmed the SYSTEM balance dropped by exactly ₦50, the recipient's own wallet balance rose by exactly ₦50, and the audit trail correctly showed the recipient's name and note.
+
+Both apps type-check clean.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database. Also now open: an actual automated daily leaderboard computation (ranking by ₦ spent) to feed this page's intended main use case — today this is only the payout mechanism, with no automated "who's actually in the top 3 today" source yet.
