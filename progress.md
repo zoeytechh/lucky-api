@@ -787,3 +787,21 @@ The user reported not seeing today's entries in their Recent Entries view right 
 Frontend-only change, type-checks clean.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database; the automated daily leaderboard computation.
+
+---
+
+## 2026-10-11 — Comment replies, with a notification back to the original author
+
+The user asked for a way to notify someone when their comment gets a reply, offering two possible shapes (`@mentions` or a per-comment Reply button) and asking which was the better fit.
+
+- **Recommended Reply button over `@mentions`, then built it that way**: this app's comments can be posted with no `fullName` set at all, falling back to a masked `•••1234` display — `@mentions` need a stable, typeable, ideally-unique name to match against, which doesn't reliably exist here. A Reply button always targets an exact comment by id, so it works the same regardless of display name, with no fuzzy text-matching to get wrong.
+- **Schema**: `DrawComment` gained an optional self-relation (`replyToId`/`replyTo`/`replies`), `onDelete: SetNull` — a comment's own 24h expiry (see `comment.service.ts`) shouldn't take its replies down with it, just un-link them back to looking like ordinary top-level comments. `createComment()` now validates the reply target actually exists and isn't hidden before allowing it.
+- **Notification reuses the app's existing architecture rather than inventing a new one**: the `/comments` socket namespace now also joins every connection to its own userId room, the same pattern `/wallet` already used for private balance updates — so a reply notification reaches exactly the person it's for, over both the existing push pipeline (which already suppresses the OS popup when the recipient's app is visible, same as every other push in this app) and a new private `comment:replied` event for the in-app case.
+- **That in-app event needed the comments socket connection itself to move up a level**: it used to live entirely inside `CommentFeed`'s own mount lifecycle, meaning it only existed while actually looking at the Draw page. A reply notification has to reach someone wherever they are in the app — same reasoning `DrawSocketContext` already established for winner announcements — so the connection now lives in a new `CommentSocketProvider`, mounted once in `App.tsx` above the routed `Outlet`; `CommentFeed` consumes it via context instead of opening a second connection to the same namespace.
+- **Frontend**: a Reply button on every comment row (works identically on comments posted before this feature shipped — replying just references an existing comment's id, nothing comment-specific to backfill), a "Replying to X" chip above the composer while composing, and the same context shown on the reply itself once posted. New `CommentReplyToast` renders app-wide from the provider, matching every other toast's placement rules.
+- **A real bug caught by actually testing against a running server, not just reading the diff**: `prisma migrate dev` applied the migration correctly but the generated client stayed stale locally, so the very first live test failed with "Unknown field `replyTo`" — `npx prisma generate` fixed it. Confirmed this wasn't a production risk before moving on: `lucky-api`'s own `build` script already runs `prisma generate` ahead of `tsc`, so Render's deploy was never exposed to this, only the local dev-mode gap was.
+- **Verified live with two real authenticated socket connections against a running server** (not mocked): a reply correctly notifies only the original comment's author; the replier's own connection gets nothing; an uninvolved third connection gets nothing; a self-reply posts successfully but does not self-notify; replying to a nonexistent (or already-expired) comment id is correctly rejected with `REPLY_NOT_FOUND`.
+
+Both apps type-check clean.
+
+**Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database; the automated daily leaderboard computation.
