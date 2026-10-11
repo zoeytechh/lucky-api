@@ -21,23 +21,49 @@ export type CommentWithUser = {
   body: string
   createdAt: Date
   user: { id: string; displayName: string }
+  replyTo: { id: string; body: string; user: { id: string; displayName: string } } | null
 }
 
-function toCommentWithUser(c: {
+type RawComment = {
   id: string
   body: string
   createdAt: Date
   user: { id: string; fullName: string | null; phoneNumber: string }
-}): CommentWithUser {
+  replyTo: {
+    id: string
+    body: string
+    user: { id: string; fullName: string | null; phoneNumber: string }
+  } | null
+}
+
+function toCommentWithUser(c: RawComment): CommentWithUser {
   return {
     id: c.id,
     body: c.body,
     createdAt: c.createdAt,
     user: { id: c.user.id, displayName: displayNameFor(c.user) },
+    replyTo: c.replyTo
+      ? {
+          id: c.replyTo.id,
+          body: c.replyTo.body,
+          user: { id: c.replyTo.user.id, displayName: displayNameFor(c.replyTo.user) },
+        }
+      : null,
   }
 }
 
-export async function createComment(userId: string, rawBody: string): Promise<CommentWithUser> {
+const COMMENT_INCLUDE = {
+  user: { select: { id: true, fullName: true, phoneNumber: true } },
+  replyTo: { include: { user: { select: { id: true, fullName: true, phoneNumber: true } } } },
+} as const
+
+export class CommentReplyNotFoundError extends Error {}
+
+export async function createComment(
+  userId: string,
+  rawBody: string,
+  replyToId?: string,
+): Promise<CommentWithUser> {
   const body = rawBody.trim()
   if (body.length === 0 || body.length > MAX_COMMENT_LENGTH) {
     throw new CommentValidationError(`Comment must be 1–${MAX_COMMENT_LENGTH} characters`)
@@ -49,9 +75,17 @@ export async function createComment(userId: string, rawBody: string): Promise<Co
     throw new CommentRateLimitError(`Please wait ${Math.ceil(waitMs / 1000)}s before commenting again`)
   }
 
+  if (replyToId) {
+    // Must exist and still be visible — replying to a hidden/already-
+    // vanished comment would notify someone about a comment they can no
+    // longer even see, which is more confusing than just rejecting it.
+    const target = await prisma.drawComment.findUnique({ where: { id: replyToId } })
+    if (!target || target.isHidden) throw new CommentReplyNotFoundError()
+  }
+
   const comment = await prisma.drawComment.create({
-    data: { userId, body },
-    include: { user: { select: { id: true, fullName: true, phoneNumber: true } } },
+    data: { userId, body, replyToId },
+    include: COMMENT_INCLUDE,
   })
   lastPostedAt.set(userId, Date.now())
 
@@ -84,7 +118,7 @@ export async function listRecentComments(limit = MAX_RECENT_COMMENTS): Promise<C
     where: { isHidden: false },
     orderBy: { createdAt: 'desc' },
     take,
-    include: { user: { select: { id: true, fullName: true, phoneNumber: true } } },
+    include: COMMENT_INCLUDE,
   })
   return comments.map(toCommentWithUser)
 }

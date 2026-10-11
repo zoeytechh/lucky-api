@@ -238,6 +238,16 @@ model DrawComment {
   isHidden  Boolean  @default(false) @map("is_hidden")
   createdAt DateTime @default(now()) @map("created_at")
 
+  // Optional reply target — a comment with no replyToId is a normal
+  // top-level post. SetNull (not Cascade) on delete: a comment's own 24h
+  // expiry (see comment.service.ts) shouldn't take its replies down with
+  // it, just un-link them back to looking like a normal top-level
+  // comment. Self-relation needs an explicit name since there's only one
+  // other relation field (user) that could otherwise be ambiguous.
+  replyToId String?       @map("reply_to_id")
+  replyTo   DrawComment?  @relation("CommentReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   DrawComment[] @relation("CommentReplies")
+
   @@index([isHidden, createdAt])
   @@map("draw_comments")
 }

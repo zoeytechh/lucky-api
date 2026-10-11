@@ -4,9 +4,11 @@ import { verifyAccessToken } from '../lib/jwt'
 import { prisma } from '../lib/prisma'
 import {
   CommentRateLimitError,
+  CommentReplyNotFoundError,
   CommentValidationError,
   createComment,
 } from '../services/comment.service'
+import { sendPushToUserIds } from '../services/push.service'
 
 let io: Server | null = null
 
@@ -54,10 +56,39 @@ function initCommentsNamespace(server: Server) {
   comments.use(authenticateSocket)
 
   comments.on('connection', (socket: Socket) => {
-    socket.on('comment:send', async (body: unknown, ack?: PostAck) => {
+    // Own-userId room, same pattern as /wallet below — lets a reply
+    // notification reach exactly the one person it's for (comment:replied)
+    // without touching the public comment:new broadcast everyone else gets.
+    socket.join(socket.data.userId)
+
+    socket.on('comment:send', async (payload: unknown, ack?: PostAck) => {
       try {
-        const comment = await createComment(socket.data.userId, typeof body === 'string' ? body : '')
+        const body = typeof payload === 'string' ? payload : (payload as { body?: unknown })?.body
+        const replyToId = typeof payload === 'object' && payload ? (payload as { replyToId?: unknown }).replyToId : undefined
+        const comment = await createComment(
+          socket.data.userId,
+          typeof body === 'string' ? body : '',
+          typeof replyToId === 'string' ? replyToId : undefined,
+        )
         comments.emit('comment:new', comment)
+
+        // Notify whoever's being replied to — never yourself (replying to
+        // your own comment is a normal, unremarkable thing to do, not
+        // something that should ping you). Both channels fire the same
+        // way every other notification in this app does: a private
+        // socket event for "currently in the app" (sw.ts will show-then-
+        // close the matching push if so, trusting this instead) and a
+        // real push either way for "currently outside it."
+        if (comment.replyTo && comment.replyTo.user.id !== socket.data.userId) {
+          const recipientId = comment.replyTo.user.id
+          comments.to(recipientId).emit('comment:replied', comment)
+          sendPushToUserIds([recipientId], {
+            title: `${comment.user.displayName} replied to your comment`,
+            body: comment.body,
+            url: '/',
+          }).catch((err) => console.error('comment-reply push failed:', err))
+        }
+
         ack?.({ ok: true })
       } catch (err) {
         const code =
@@ -65,8 +96,15 @@ function initCommentsNamespace(server: Server) {
             ? 'RATE_LIMIT'
             : err instanceof CommentValidationError
               ? 'VALIDATION_ERROR'
-              : 'ERROR'
-        const message = err instanceof Error ? err.message : 'Failed to post comment'
+              : err instanceof CommentReplyNotFoundError
+                ? 'REPLY_NOT_FOUND'
+                : 'ERROR'
+        const message =
+          err instanceof CommentReplyNotFoundError
+            ? 'That comment is no longer available to reply to'
+            : err instanceof Error
+              ? err.message
+              : 'Failed to post comment'
         ack?.({ ok: false, code, message })
       }
     })
