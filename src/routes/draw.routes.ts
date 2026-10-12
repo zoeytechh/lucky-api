@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { ENTRY_COST_MINOR, FEE_MINOR, ROUND_SIZE, STAKE_MINOR, WINNER_PAYOUT_MINOR } from '../config/constants'
 import { displayNameFor } from '../lib/displayName'
+import { clampLimit, pagination } from '../lib/pagination'
 import { prisma } from '../lib/prisma'
 import { requireAuth, requireCompleteProfile } from '../middleware/auth'
 import {
@@ -157,7 +158,7 @@ router.get('/rounds/:roundId', async (req, res) => {
 })
 
 router.get('/entries', async (req, res) => {
-  const limit = Math.min(Number(req.query.limit) || 10, 50)
+  const limit = clampLimit(req, 10, 50)
   const entries = await prisma.drawEntry.findMany({
     where: { userId: req.user!.id },
     orderBy: { enteredAt: 'desc' },
@@ -176,16 +177,6 @@ router.get('/entries', async (req, res) => {
     })),
   })
 })
-
-// Shared by /recent-entries and /winners: both are numbered-page feeds
-// (not "load more" accumulation) so a far-back page is one bounded
-// request, not N pages' worth of rows sitting in memory — relevant once
-// this is doing ~100 rounds/day and history keeps growing indefinitely.
-function pagination(req: { query: Record<string, unknown> }, defaultPageSize: number) {
-  const pageSize = Math.min(Math.max(Number(req.query.pageSize) || defaultPageSize, 1), 100)
-  const page = Math.max(Number(req.query.page) || 1, 1)
-  return { page, pageSize, skip: (page - 1) * pageSize }
-}
 
 // The caller's own entries only — not a global feed. Used both for the
 // small inline "recent entries" widget on the Draw page (page size 3, no

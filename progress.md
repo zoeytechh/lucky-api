@@ -976,3 +976,24 @@ User's point: the dedicated Comments page (`/draw/comments`) exists specifically
 Frontend-only change, type-check clean.
 
 **Next:** layer 2 once the user's satisfied with layer 1. Build the seamless iOS launch-splash image. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
+
+---
+
+## 2026-10-12 — Foundation layer 2: backend API audit, then acted on every finding
+
+The user asked to move on to `Foundation/layer2.txt` — the backend counterpart to layer 1: endpoint organization, error handling, input validation, authentication, response quality, performance. Score: 5.5/6 (every category passed outright except input validation, which had one real inconsistency).
+
+**Findings, real ones, not guessed** (read every route file, the three auth-gating middlewares, the Socket.IO comment/wallet namespaces, and the core money-moving services):
+
+- Endpoint organization, authentication, response quality, performance: all passed with concrete evidence — explicit `select` whitelists everywhere (phone numbers never reach a public feed raw, masked via `displayNameFor`), row-level `SELECT ... FOR UPDATE` locking scoped tightly on the real-money entry path, batched (not N+1) recipient lookups in the admin audit trail, and error handling that works correctly specifically *because* the app is on Express 5 (auto-forwards rejected async-handler promises — this pattern would silently hang requests on Express 4).
+- Input validation: one real gap. Every other paginated endpoint clamps with both a floor and ceiling (`Math.min(Math.max(n,1),100)`); `GET /api/draw/entries`'s `limit` only had the ceiling, so a negative value reached Prisma's `take` as-is — which Prisma treats as "take from the end," silently reversing the sort instead of erroring. Low-impact (the caller's own entry list only) but a real inconsistency against a pattern the rest of the codebase clearly knew to apply.
+
+**Fixed all three top findings, plus the user asked specifically about a fourth (noted in the audit as "not a bug, a risk to watch," not a top-3 fix item):**
+
+1. **Multer upload errors now return a real 400, not a generic 500.** `profile.routes.ts`'s `fileFilter` (wrong type) and 5MB size limit both report failure by calling `next(err)`, which — left alone — skips straight past the route to the app's generic error handler (meant to hide an *unexpected* exception's message, not a deliberate, already-helpful validation message). Wrapped in a small `handleAvatarUpload` adapter that intercepts multer's own callback and returns the specific message (`"Image must be 5MB or smaller"` for the size limit, the `fileFilter`'s own message otherwise) as a proper 400.
+2. **`GET /api/draw/entries`'s `limit` now has the missing floor.** New shared `lib/pagination.ts` (`clampLimit` + the `pagination()` helper, moved out of `draw.routes.ts` where it was private) — `wallet.routes.ts` had its own copy-pasted inline version of the same page/pageSize clamp; both routers now import the one shared helper instead of maintaining two copies that could drift.
+3. **The Socket.IO/REST auth duplication the user asked about directly**: `requireAuth`+`requireCompleteProfile` (Express middleware) and `authenticateSocket` (the `/comments` and `/wallet` namespaces) each independently re-implemented "verify the JWT, look up the user, check role+avatar+fullName." The fix: extracted the actual rules into two shared functions in `middleware/auth.ts` — `resolveUserFromToken` (JWT verify + DB lookup, throws `UnauthenticatedError` if the user's gone) and `assertCompleteProfile` (throws `ProfileIncompleteError` if incomplete). `requireAuth`/`requireCompleteProfile` and `authenticateSocket` are now both thin adapters translating the *same* underlying check into their own protocol's error shape (HTTP status vs. a socket handshake rejection) — there's exactly one place encoding what "authenticated" and "complete profile" mean, so the two genuinely can't drift anymore, not just "mostly stay in sync by discipline."
+
+Verified behavior-preservation by hand, line by line, against the original branching (both the Express 401 message split and the socket's `'unauthorized'` vs `'profile incomplete'` split) rather than trusting the refactor by inspection alone — confirmed identical. Full clean build (`prisma generate && tsc`) passes. Did **not** run the integration test suite (`tests/integration/*.test.ts`) for this — those write real rows against the shared dev/prod database, and this was a pure logic-preserving refactor already hand-verified, not something that justified a production-data-touching test run.
+
+**Next:** layer 3 once the user's satisfied with layer 2. Still open: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation, the seamless iOS launch-splash image.

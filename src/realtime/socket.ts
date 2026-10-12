@@ -1,7 +1,6 @@
 import type { Server as HttpServer } from 'node:http'
 import { Server, type Socket } from 'socket.io'
-import { verifyAccessToken } from '../lib/jwt'
-import { prisma } from '../lib/prisma'
+import { assertCompleteProfile, ProfileIncompleteError, resolveUserFromToken } from '../middleware/auth'
 import {
   CommentRateLimitError,
   CommentReplyNotFoundError,
@@ -16,29 +15,26 @@ type PostAck = (res: { ok: true } | { ok: false; code: string; message: string }
 
 /**
  * Shared by every authenticated namespace (/comments, /wallet) — same
- * JWT handshake + mandatory-avatar-and-name gate as requireCompleteProfile
- * on the REST side, just with no Express middleware layer to put it in,
- * so it lives here instead. Centralized so the two namespaces can't
- * drift into two slightly different versions of "who's allowed to
- * connect."
+ * JWT handshake + mandatory-avatar-and-name gate as requireAuth +
+ * requireCompleteProfile on the REST side, just with no Express
+ * middleware layer to put it in, so it lives here instead. Calls the
+ * exact same resolveUserFromToken/assertCompleteProfile functions those
+ * two use (see middleware/auth.ts) rather than its own copy of the
+ * check — previously this reimplemented both rules independently, which
+ * meant a future change to either REST gate had no guarantee of ever
+ * reaching this one.
  */
 function authenticateSocket(socket: Socket, next: (err?: Error) => void) {
   ;(async () => {
     const token = socket.handshake.auth?.token
     if (typeof token !== 'string') return next(new Error('unauthorized'))
     try {
-      const payload = verifyAccessToken(token)
-      const user = await prisma.user.findUnique({
-        where: { id: payload.sub },
-        select: { role: true, avatarUrl: true, fullName: true },
-      })
-      if (!user) return next(new Error('unauthorized'))
-      if (user.role === 'USER' && (!user.avatarUrl || !user.fullName)) {
-        return next(new Error('profile incomplete'))
-      }
-      socket.data.userId = payload.sub
+      const user = await resolveUserFromToken(token)
+      assertCompleteProfile(user)
+      socket.data.userId = user.id
       next()
-    } catch {
+    } catch (err) {
+      if (err instanceof ProfileIncompleteError) return next(new Error('profile incomplete'))
       next(new Error('unauthorized'))
     }
   })()
