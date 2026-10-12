@@ -926,3 +926,13 @@ User's follow-up clarified what was actually wrong with every version so far: a 
 Frontend-only change, type-check clean.
 
 **Next:** layer 2 once the user's satisfied with layer 1. Build the seamless iOS launch-splash image. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
+
+---
+
+## 2026-10-12 — Card shadow turned down to minimal
+
+Last word on the card-shadow back-and-forth this session: user asked to remove it or make it minimal. Kept the lining shape (hugs the card's own edge, no offset) but shrank the spread to 1px and dropped every opacity value by roughly half again — `card-raised` and `card-raised-sm` are now nearly the same minimal weight, just enough to read as "raised" without the treatment drawing attention to itself.
+
+Frontend-only change, type-check clean.
+
+**Next:** layer 2 once the user's satisfied with layer 1. Build the seamless iOS launch-splash image. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
