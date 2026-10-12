@@ -850,3 +850,18 @@ Follow-on polish after the layer 1 audit, prompted by a real observation: the Ho
 Frontend-only changes, type-check clean.
 
 **Next:** layer 2 once the user's satisfied with layer 1. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
+
+---
+
+## 2026-10-12 — Sharp shadows on every card, app-wide
+
+The user asked for every card to carry a sharp shadow, plus a "neumorphism"-inspired tactile quality — explicitly without changing any existing colors.
+
+- **Two new shared utilities in `index.css`**, no palette changes: `card-raised` (the full offset shadow plus a faint inner top highlight — the highlight is what actually reads as "raised/embossed," a neumorphic cue, without softening the shadow itself or dropping to the near-invisible same-background-color contrast true neumorphism relies on, which would have fought this app's bold, high-contrast identity rather than fit it) and `card-raised-sm`, a lighter weight for repeated list rows — the full shadow stacked once per row in a long list read as cluttered rather than smooth.
+- **Applied across every page**: balance cards (Wallet, Admin), the "How it works" and Leaderboard cards, list rows (recent entries, transactions, winners, admin sends), the comments panel, HowToPlay's three outcome rows, and the push-notifications row in Profile.
+- **Deliberately left flat**: form inputs, avatar circles, toggle-pill buttons, skeleton placeholders, and individual chat bubbles inside the comments panel (the panel itself is the card — shadowing every message bubble too would be shadow-in-shadow noise, the same reason real chat apps don't shadow individual messages).
+- Verified visually (Draw and Wallet, mocked data): every intended card shows the shadow at the right weight, everything deliberately skipped stays flat, and — confirmed explicitly — no color anywhere changed.
+
+Frontend-only change, type-check clean.
+
+**Next:** layer 2 once the user's satisfied with layer 1. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
