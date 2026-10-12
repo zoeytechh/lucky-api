@@ -836,3 +836,16 @@ The user asked to start running the `Foundation/layer1.txt` through `layer13.txt
 Frontend-only changes, type-check clean.
 
 **Next:** layer 2 once the user's satisfied with layer 1. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
+
+---
+
+## 2026-10-12 — Skeleton loading states, Loader redesigned, sharp shadows
+
+Follow-on polish after the layer 1 audit, prompted by a real observation: the How to Play page was blocking its entire (almost entirely static) content behind a spinner for a fetch most of the page doesn't even need.
+
+- **Page loads now show skeletons shaped like the real content; `Loader` is reserved for in-flight action requests.** New `Skeleton` primitive (a single pulsing placeholder block, shaped via className per call site). Converted every remaining page-load spinner across the app: `HowToPlay` (the five sections are almost entirely static explainer copy — only a handful of inline numbers come from the backend, so now only those show skeletons while the rest of the page renders immediately), `Draw` (the "How it works" card, "Past Winners" card, and the fully-interactive `CommentFeed` don't depend on round data at all and now render immediately too — only the ring/button/stats section, which genuinely can't render without it, shows a new `DrawTopSkeleton` shaped like the real layout), `Winners`, `RecentEntries`, `Wallet`, and `Admin` (skeleton rows/blocks replacing full-section spinners). `Loader` itself now renders the nav's own `PartyMascot` instead of a generic spinning ring, and the only page left using it is `SplashLoader` (the auth bootstrap check, not any specific page's data — there's no content shape to skeleton while it's still unknown which page will even render). Verified visually across all 6 affected pages with deliberately delayed mock responses, confirming both the mid-load skeleton state and the fully-resolved state render correctly.
+- **Every shadow switched from soft/diffused to sharp/hard-edged.** The whole app used one consistent "soft floating" shadow style (large blur, negative spread) on toasts, modals, the iOS install banner, and the pull-to-refresh icon — replaced with a crisp zero-blur offset shadow, fitting the bold Owambe Jackpot identity better than a soft glow. The Enter button's coral glow and WinnerModal's pulsing prize-pill glow are deliberately untouched (animated glow effects serving a specific purpose, not structural card shadows). Also caught and fixed `MobileMenu`'s drawer, which had neither a border radius nor a shadow matching anything else in the app (still on Tailwind's default `shadow-xl`, completely square) — its floating right edge now gets `rounded-r-2xl` and a matching horizontal sharp shadow. Verified visually.
+
+Frontend-only changes, type-check clean.
+
+**Next:** layer 2 once the user's satisfied with layer 1. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
