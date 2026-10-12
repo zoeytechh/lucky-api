@@ -936,3 +936,15 @@ Last word on the card-shadow back-and-forth this session: user asked to remove i
 Frontend-only change, type-check clean.
 
 **Next:** layer 2 once the user's satisfied with layer 1. Build the seamless iOS launch-splash image. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
+
+---
+
+## 2026-10-12 — Found the real problem with the card shadow, plus a dedicated comments page
+
+**Card shadow, final fix**: user shared a reference screenshot and said they still saw no sign of neumorphism — turned out "minimal" (previous entry) had gone invisible, and a screenshot of our own app confirmed it: at that weight the lining barely shows at all. The deeper issue wasn't the weight, it was the color — a dark (`rgba(0,0,0,...)`) lining has very little contrast against this palette's already-dark green, unlike a light-UI card shadow. Switched the lining and both insets to a light, ink-toned color instead (same family as the app's text color), which is what actually has enough contrast to read clearly against `--color-ground`/`--color-ground-raised`. Verified visually (Playwright screenshot of the Draw page) — clearly visible now without being loud.
+
+**New: dedicated Comments page.** `CommentFeed` gained two optional props: `viewAllHref` (renders a "View all" link opposite the "Comments" header, same row pattern "Recent entries" already uses) and `fullPage` (drops the fixed 320px scroll container so the list just grows with the page). New `/draw/comments` route + `Comments.tsx` page (same back-link/title shell as `RecentEntries`/`Winners`) renders `<CommentFeed fullPage />` — reachable via "View all" on the Draw page, same discovery pattern as Recent Entries and Past Winners, not a new nav entry. Live socket updates and threading/reply logic are unchanged — it's the same component, just unconstrained. Verified visually: no scroll clipping, no duplicate "Comments" heading (the in-component header row is suppressed in `fullPage` mode since the page's own title already says it).
+
+Frontend-only changes, type-check clean.
+
+**Next:** layer 2 once the user's satisfied with layer 1. Build the seamless iOS launch-splash image. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
