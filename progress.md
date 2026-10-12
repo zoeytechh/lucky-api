@@ -887,3 +887,19 @@ Correction to the earlier "sharp shadows app-wide" pass: the mobile `MobileMenu`
 Frontend-only change, type-check clean.
 
 **Next:** layer 2 once the user's satisfied with layer 1. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
+
+---
+
+## 2026-10-12 — Card shadows turned way up: bolder, sharper, more visible
+
+Follow-up to the sharp-shadow pass — the user said the neumorphism wasn't landing as catchy/visible enough, then asked for it sharper still. Iterated `card-raised`/`card-raised-sm` in `index.css` through several rounds, no palette changes:
+
+- Outer offset shadow: distance roughly doubled (3px→8px / 1.5px→4px) and opacity pushed much higher (0.25→0.65 / 0.2→0.55) — still zero blur throughout, so "sharper" meant harder contrast, not a different shadow shape.
+- Inset highlight (top) strengthened, and a second inset shadow (bottom, dark) added — the light-top/dark-bottom pairing is what actually reads as embossed/raised, not just "a shadow sitting under a flat card."
+- Verified against a real production build + preview server (Playwright, mocked APIs, pinned Chromium) rather than trusting the numbers blind: screenshotted the Draw page and confirmed the "How it works"/"Past Winners" cards and the comments panel all show strong, crisp, clearly-visible offset shadows. Temp Playwright install removed afterward.
+
+Also asked and answered this round: the "two splash screens" the user sees on a fresh PWA launch (a big-icon-only screen, then our own wordmark+icon `SplashLoader`) is the OS's own native PWA launch splash (generated from the manifest icon/background) followed by our in-app one — not two screens our own code renders. User chose to make it seamless rather than drop standalone display mode; next step is a custom iOS startup image matching `SplashLoader`'s look (Android has no equivalent custom-splash hook).
+
+Frontend-only change, type-check clean.
+
+**Next:** layer 2 once the user's satisfied with layer 1. Build the seamless iOS launch-splash image. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
