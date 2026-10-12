@@ -865,3 +865,15 @@ The user asked for every card to carry a sharp shadow, plus a "neumorphism"-insp
 Frontend-only change, type-check clean.
 
 **Next:** layer 2 once the user's satisfied with layer 1. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
+
+---
+
+## 2026-10-12 — Fixed blank-green-screen bug after tapping Refresh on the update prompt
+
+User report: sometimes, specifically right after tapping UpdatePrompt's "Refresh" button to pick up a new deploy, the app loaded to a totally blank screen in the app's own background green — no mascot, no error, nothing. Console showed the smoking gun: `GET /assets/index-<hash>.js net::ERR_ABORTED 404`.
+
+- **Root cause**: `vite.config.ts`'s `injectManifest.globPatterns` included `html`, so `index.html` itself was precached, and `sw.ts` served every navigation from that precached shell via `createHandlerBoundToURL('/index.html')`. A precached shell keeps pointing at whatever JS/CSS hashes were current *at the moment it was cached* — but Vercel's production alias only ever serves the latest deploy's files, so once a newer deploy ships, an older build's hashed JS file is simply gone from that URL. If the reload UpdatePrompt triggers gets served that stale shell before the new worker has fully finished taking over (the exact moment two things — a new service worker and a new module graph — are both changing at once), the browser requests a script that no longer exists anywhere: 404, and since that 404'd file *was* the app's own entry bundle, React never even got a chance to run. Nothing on screen but `index.html`'s own background color.
+- **Fix**: `index.html` is no longer precached at all (dropped `html` from `globPatterns`), and `sw.ts`'s navigation route is now `NetworkFirst` (3s timeout, falling back to a cache populated by each successful fetch) instead of a precached handler. Every navigation now always tries to fetch whatever shell is actually live right now; the cache fallback only kicks in fully offline, where a slightly-stale shell beats nothing. The hashed JS/CSS/icon files stay precached as before (safe — their content is tied to their hash, so a precached one is never wrong), only the shell itself changed strategy.
+- Verified via a real production build (`vite build`): the generated `dist/sw.js`'s precache manifest no longer includes `index.html`, and the new `NetworkFirst`/`lucky-you-shell` cache wiring is present in the built worker. Type-check clean.
+
+**Next:** layer 2 once the user's satisfied with layer 1. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
