@@ -903,3 +903,26 @@ Also asked and answered this round: the "two splash screens" the user sees on a 
 Frontend-only change, type-check clean.
 
 **Next:** layer 2 once the user's satisfied with layer 1. Build the seamless iOS launch-splash image. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
+
+---
+
+## 2026-10-12 — Reverted the shadow amplification: "too much"
+
+The bolder card shadows from the previous entry didn't land well live — reverted that commit (`git revert`) straight back to the original sharp-shadow values from the first app-wide pass (`card-raised`: 3px offset / 0.25 opacity, `card-raised-sm`: 1.5px / 0.2), rather than guessing at a new in-between number.
+
+Frontend-only change, type-check clean.
+
+**Next:** layer 2 once the user's satisfied with layer 1. Build the seamless iOS launch-splash image. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
+
+---
+
+## 2026-10-12 — Card shadow redesigned as a lining, not an offset drop-shadow
+
+User's follow-up clarified what was actually wrong with every version so far: a directional offset shadow (x/y displacement, shadow cast to one side) reads as floating away from the card, no matter how big or small the offset is. What they wanted was a crisp lining hugging the card's own edge instead.
+
+- `card-raised`/`card-raised-sm` in `index.css` switched from an offset box-shadow to a spread-only one (`0 0 0 <spread>`, zero x/y offset) — a thin, zero-blur outline that sits directly against the card's own border rather than displaced below/right of it. Kept the top-highlight/bottom-shadow inset pair for the embossed depth cue.
+- Verified via a real production build + preview server screenshot (Playwright, mocked APIs): the "How it works"/"Past Winners" cards and the comments panel all show a crisp lining hugging their own edges, not a shadow sitting apart from the card. Temp Playwright install removed afterward.
+
+Frontend-only change, type-check clean.
+
+**Next:** layer 2 once the user's satisfied with layer 1. Build the seamless iOS launch-splash image. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
