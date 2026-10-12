@@ -820,3 +820,19 @@ Several smaller asks in sequence.
 Both apps type-check clean.
 
 **Next:** finish the live manual draw test, then M7 — Paystack deposits. Still open: the dedicated test database; the automated daily leaderboard computation.
+
+---
+
+## 2026-10-12 — Foundation layer 1: frontend audit, then acted on every finding
+
+The user asked to start running the `Foundation/layer1.txt` through `layer13.txt` audit prompts, one layer at a time. Layer 1 covers the frontend: organization, mobile, accessibility, consistency, speed, forms — pass/fail with a specific example each, score out of 6.
+
+- **Findings**: 5/6. Organization, mobile, accessibility (with a caveat — see below), consistency, and forms all passed with concrete evidence (zero `onClick`-on-`div` anti-patterns, every `<img>` has `alt`, 222 uses of shared design tokens vs. zero raw hex leaking outside the three SVG-stroke files that legitimately need it, form inputs preserved on failed submission). Speed failed: `main.tsx` imported every page eagerly — one ~570KB bundle shipped to every visitor regardless of whether they'd ever see Admin (three accounts, ever) or Onboarding (once, first visit only).
+- **Fixed all three flagged items, not just reported them**:
+  - **Code-splitting**: every page except `Draw` and `Login` (the two near-universal first-load paths, where lazy-loading would only add a pointless flicker) is now `React.lazy()` behind one top-level `Suspense` boundary using the existing `SplashLoader` as fallback. Verified against the *real* production build (`vite build` + `vite preview`, not dev mode, since dev mode doesn't exercise actual chunk-loading) with all APIs mocked: all 8 routes render correct real content, zero JS errors — `Admin` is now its own isolated 4KB chunk instead of riding along in everyone's bundle.
+  - **Focus trap** (the accessibility caveat from the audit): neither `WinnerModal` nor the entry-confirmation dialog actually trapped keyboard focus despite both declaring `role="dialog" aria-modal="true"` — Tab/Shift+Tab were free to leave for the page behind the backdrop, Escape did nothing, focus wasn't restored on close. New shared `useFocusTrap` hook fixes all four. The entry-confirm dialog lived inline in `Draw.tsx`'s own long-lived render (where a mount effect only ever fires once for the whole page, not once per dialog open) — extracted to its own `EntryConfirmDialog` component, matching the conditionally-rendered pattern every other modal/toast in the app already uses, so the hook's mount/unmount assumption actually holds. Verified live, keyboard-only: opens focused on Cancel (Enter is disabled during the arm delay), Tab cycles Cancel → Enter → wraps to Cancel, Shift+Tab from Cancel wraps to Enter, Escape closes it, focus returns to the ENTER button afterward.
+  - **Naming**: `icons.tsx` → `Icons.tsx` for consistency with every other component file. Updated all 9 import sites to the exact new casing, not just the filename — a mismatch Windows tolerates silently but that would break the build on Vercel's case-sensitive Linux filesystem. Confirmed via a clean production build.
+
+Frontend-only changes, type-check clean.
+
+**Next:** layer 2 once the user's satisfied with layer 1. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
