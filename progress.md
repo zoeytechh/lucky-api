@@ -963,3 +963,16 @@ This was always a latent gap, but the earlier `sw.ts` fix (precached `index.html
 Frontend-only change (config, no code) — no type-check applicable, validated as syntactically correct JSON.
 
 **Next:** layer 2 once the user's satisfied with layer 1. Build the seamless iOS launch-splash image. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
+
+---
+
+## 2026-10-12 — Sticky Back on the Comments page
+
+User's point: the dedicated Comments page (`/draw/comments`) exists specifically so people can scroll an ever-growing thread, and that's exactly the case where scrolling back up just to hit Back is bad — the control you need most once you're deep in a long list shouldn't be the one that scrolls away.
+
+- `Comments.tsx`'s "← Back / Comments" row is now `sticky`, pinned directly below the app's own sticky main nav (measured at 61px tall — `top-15.25` in Tailwind's scale) rather than guessed, with its own background/border so scrolled comment rows don't show through underneath it.
+- Verified by rendering 25 comments and scrolling deep into the list (Playwright, mocked data): both the app nav and this row stay pinned together, no gap, no overlap, no content showing through.
+
+Frontend-only change, type-check clean.
+
+**Next:** layer 2 once the user's satisfied with layer 1. Build the seamless iOS launch-splash image. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
