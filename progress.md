@@ -948,3 +948,18 @@ Frontend-only change, type-check clean.
 Frontend-only changes, type-check clean.
 
 **Next:** layer 2 once the user's satisfied with layer 1. Build the seamless iOS launch-splash image. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
+
+---
+
+## 2026-10-12 — Found and fixed a real Vercel 404, exposed by the earlier service-worker fix
+
+User hit Vercel's own platform 404 page (not our app's) after tapping UpdatePrompt's Refresh. Root cause: there was no `vercel.json` at all — Vercel has no SPA fallback configured out of the box for a Vite deployment, so a direct request for any client-side route (`/wallet`, `/profile`, `/draw/recent`, etc.) with no literal matching file returns a genuine platform 404.
+
+This was always a latent gap, but the earlier `sw.ts` fix (precached `index.html` → `NetworkFirst`, see the blank-screen-on-refresh entry above) is what exposed it: the OLD service worker intercepted every navigation and always served its own cached shell regardless of the actual requested path, which happened to mask this gap completely. The new one correctly stops doing that (that was the whole point — stale shells referencing deleted JS hashes were the actual blank-screen bug), which means a reload on any non-root route now genuinely reaches Vercel's own router — where there was nothing to catch it.
+
+- **Fix**: added `vercel.json` with a catch-all rewrite (`/(.*)`→`/index.html`). Vercel checks the filesystem for a real static file first (confirmed: `public/`'s icons, `dist/assets/*`, `sw.js`, `manifest.webmanifest` all still resolve directly, unaffected), and only falls through to the rewrite for paths with no matching file — exactly the client-side routes React Router needs to handle. Fixes reloads/deep-links on *any* route, not just the update-refresh case.
+- User noted a second reload "worked" — flagged correctly as not a resolution, just luck (landing back on `/`, or edge-cache inconsistency); without this fix the 404 was still reachable from any other route.
+
+Frontend-only change (config, no code) — no type-check applicable, validated as syntactically correct JSON.
+
+**Next:** layer 2 once the user's satisfied with layer 1. Build the seamless iOS launch-splash image. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
