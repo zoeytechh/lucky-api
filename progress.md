@@ -877,3 +877,13 @@ User report: sometimes, specifically right after tapping UpdatePrompt's "Refresh
 - Verified via a real production build (`vite build`): the generated `dist/sw.js`'s precache manifest no longer includes `index.html`, and the new `NetworkFirst`/`lucky-you-shell` cache wiring is present in the built worker. Type-check clean.
 
 **Next:** layer 2 once the user's satisfied with layer 1. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
+
+---
+
+## 2026-10-12 — Sharp shadows/neumorphism are a card-only treatment, not the side nav
+
+Correction to the earlier "sharp shadows app-wide" pass: the mobile `MobileMenu` drawer had picked up a sharp shadow and `rounded-r-2xl` in that same pass, but the user clarified the intent was always cards *inside* pages — the slide-out side nav itself should stay flat. Removed both from the drawer's root element; the individual nav links inside keep their own unrelated `rounded-lg`.
+
+Frontend-only change, type-check clean.
+
+**Next:** layer 2 once the user's satisfied with layer 1. Still open otherwise: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation.
