@@ -1017,3 +1017,23 @@ Full clean build (`prisma generate && tsc`) passes after the migration.
 **Backups, closed out same day.** Found Neon's actual retention: 6-hour point-in-time history window — short, worth revisiting if usage grows, but not something to act on today. Then did a real test restore, walked through live: created a branch from `production` using Neon's "from a past point in time" option (not the in-place "Restore" button on the Backup & Restore page, which rolls back production itself rather than creating a safe isolated copy — steered away from that). Verified the resulting branch holds a correct, internally consistent copy of the data (matching row counts and timestamps across `draw_entries` and `users`). The specific point-in-time cutoff happened to land on a quiet stretch with no app activity since, so comparing its `max(entered_at)` against production's current value didn't show a visible "before/after" difference — not a gap in the test, just nothing recent to miss. What it did prove: the actual recovery workflow produces a working, queryable copy of the database on demand, which is what "has a restore been tested" is really asking. Test branches left to auto-expire on their own rather than needing manual cleanup.
 
 **Next:** layer 4 once the user's satisfied with layer 3. Still open: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation, the seamless iOS launch-splash image.
+
+---
+
+## 2026-10-13 — Foundation layer 4: auth/permissions audit — clean 6/6, added "log out of all devices"
+
+`Foundation/layer4.txt` — auth flow, authorization enforcement, row-level security, session management, password-reset security, protected routes. This app has no passwords at all (phone + OTP + JWT by design), so password-hashing/reset-link questions were audited against their actual equivalent (OTP handling) rather than forced onto a mechanism that doesn't exist.
+
+**Findings, all genuinely clean:**
+
+- Auth flow: OTP hashed with HMAC + a server-side pepper, 5-min expiry, single-use, capped at 5 verify attempts, 60s per-number request cooldown. Refresh tokens stored hashed (SHA-256) and rotated on every use (old one explicitly revoked the instant a new one issues).
+- Authorization: every protected route goes through `requireAuth` (+ `requireAdmin`/`requireCompleteProfile` where relevant — re-confirmed from layer 2). `Admin.tsx` adds its own redundant client-side role check too, not just a hidden nav link.
+- Row-level security: every user-scoped query anywhere in the backend uses `req.user!.id` from the verified JWT — never a client-suppliable `:userId` parameter. No IDOR surface exists to even audit for, by construction.
+- Session management: the access token lives *only* in a plain JS variable, never `localStorage` — immune to the classic XSS-reads-your-token-from-storage attack entirely. The one `sessionStorage` write (for the app-triggered-reload handoff) is a narrow, self-clearing, one-shot use, not persistent. Refresh cookie is `httpOnly` + `Secure` + scoped to `/api/auth` only.
+- Protected routes: every page lives under the `<App/>` layout route, which gates on auth status before any child renders. Nothing bypasses it.
+
+**One real gap found and closed**: no way to revoke every session on an account at once — only the current device's own logout. Lost/stolen-phone scenario had no answer beyond waiting out the 30-day refresh token or the 15-minute access token. New `POST /api/auth/logout-all` (`requireAuth`, revokes every non-revoked `RefreshToken` row for that `userId` via a new `revokeAllRefreshTokens` service function) + a "Log out of all devices" link in `Profile.tsx` (behind a plain `window.confirm`, proportionate to a low-stakes-to-data but high-blast-radius-to-sessions action) wired through a new `logoutAll` on `AuthContext`. Verified visually (Playwright, mocked auth) that both logout options render correctly on Profile.
+
+Full type-check clean on both repos; frontend production build passes.
+
+**Next:** layer 5 once the user's satisfied with layer 4. Still open: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation, the seamless iOS launch-splash image.

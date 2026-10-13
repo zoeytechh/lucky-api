@@ -75,3 +75,20 @@ export async function revokeRefreshToken(refreshToken: string): Promise<void> {
     })
     .catch(() => {})
 }
+
+/**
+ * The lost/stolen-phone case: revokes every refresh token on the
+ * account, not just the one belonging to the device making this call —
+ * scoped by userId rather than a specific token, unlike revokeRefreshToken
+ * above. The access token each other device is still holding keeps
+ * working for up to its own 15-minute TTL (there's no server-side access-
+ * token revocation list, by design — that's the tradeoff a short-lived,
+ * stateless access token makes), but none of them can silently refresh
+ * past that once this runs.
+ */
+export async function revokeAllRefreshTokens(userId: string): Promise<void> {
+  await prisma.refreshToken.updateMany({
+    where: { userId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  })
+}

@@ -16,6 +16,7 @@ import {
   InvalidRefreshTokenError,
   findOrCreateUserByPhone,
   issueSession,
+  revokeAllRefreshTokens,
   revokeRefreshToken,
   rotateSession,
 } from '../services/auth.service'
@@ -135,6 +136,17 @@ router.get('/me', requireAuth, async (req, res) => {
 router.post('/logout', async (req, res) => {
   const token = req.cookies?.[REFRESH_COOKIE]
   if (token) await revokeRefreshToken(token)
+  res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' })
+  res.json({ loggedOut: true })
+})
+
+// The lost/stolen-phone case — every refresh token on the account,
+// not just this device's. requireAuth here (not just a valid refresh
+// cookie) since the access token is the thing actually proving who's
+// asking, and this is reachable from any logged-in device, not only the
+// one about to log itself out alongside the rest.
+router.post('/logout-all', requireAuth, async (req, res) => {
+  await revokeAllRefreshTokens(req.user!.id)
   res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' })
   res.json({ loggedOut: true })
 })
