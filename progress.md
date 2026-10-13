@@ -997,3 +997,21 @@ The user asked to move on to `Foundation/layer2.txt` — the backend counterpart
 Verified behavior-preservation by hand, line by line, against the original branching (both the Express 401 message split and the socket's `'unauthorized'` vs `'profile incomplete'` split) rather than trusting the refactor by inspection alone — confirmed identical. Full clean build (`prisma generate && tsc`) passes. Did **not** run the integration test suite (`tests/integration/*.test.ts`) for this — those write real rows against the shared dev/prod database, and this was a pure logic-preserving refactor already hand-verified, not something that justified a production-data-touching test run.
 
 **Next:** layer 3 once the user's satisfied with layer 2. Still open: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation, the seamless iOS launch-splash image.
+
+---
+
+## 2026-10-13 — Foundation layer 3: database/storage audit, fixed the one real gap
+
+`Foundation/layer3.txt` — schema design, relationships, unique constraints, indexes, file storage, backups. Read the full `schema.prisma` and every one of the 9 migration files (not just the schema — some of this app's real constraints are hand-written SQL Prisma's schema language can't express, so the migrations are the actual source of truth).
+
+**Findings:**
+
+- Schema design, relationships, unique constraints, file storage: all PASS with concrete evidence. Every foreign key resolves to `ON DELETE RESTRICT ON UPDATE CASCADE` in the real migration SQL (confirmed, not assumed) — a deliberate, consistent choice for a money-handling app: a `User`/`Wallet`/`DrawRound` can never be deleted while dependent financial rows exist. Two hand-written constraints beyond Prisma schema language verified present in the actual SQL: a partial unique index guaranteeing at most one `OPEN` round can ever exist at the Postgres level, and `CHECK` constraints keeping `entryCount`/`slotNumber` within `0–1000`. Avatars go through Cloudinary — only the URL lands in Postgres, not file bytes (except a clearly-marked local-dev-only fallback when Cloudinary isn't configured).
+- **Indexes: one real gap, fixed.** `draw_entries` had no index on `user_id` at all — only `(round_id, slot_number)` and `(outcome, settled_at)`. But `GET /api/draw/entries` and `/recent-entries` both query `WHERE userId = ? ORDER BY enteredAt DESC`, exactly the unindexed column — Postgres doesn't auto-index foreign keys the way MySQL does, so this was a full sequential scan on a table the codebase's own comments already flag as growing indefinitely (~100 rounds/day × 1000 entries). Added `@@index([userId, enteredAt])` (composite, so the same index scan covers both the filter and the sort) and applied it as a real migration (`20261013083406_draw_entries_user_id_index`) — additive only, no data touched.
+- **Backups: asked the user directly rather than guess** — this is a Neon dashboard setting plus an operational fact, not something expressible in this repo. Answer: not sure / never tested. Flagged as the real remaining gap in this category — recommended checking Neon's retention/PITR window and doing one actual test restore, since an unverified backup isn't a confirmed one. Not something I can act on from here (lives outside the codebase, and a restore test is the user's call to run against real infrastructure).
+
+**Score: 4/6 going in** (indexes + backups), now 5/6 after the index fix — backups remains open, waiting on the user to check Neon's settings.
+
+Full clean build (`prisma generate && tsc`) passes after the migration.
+
+**Next:** layer 4 once the user's satisfied with layer 3. Still open: backups verification (Neon dashboard + a real test restore), the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation, the seamless iOS launch-splash image.

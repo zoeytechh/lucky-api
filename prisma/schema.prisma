@@ -220,6 +220,12 @@ model DrawEntry {
 
   @@unique([roundId, slotNumber])
   @@index([outcome, settledAt]) // the "which payouts are still outstanding" query
+  // Postgres doesn't auto-index foreign key columns (unlike MySQL) — this
+  // covers GET /api/draw/entries and /recent-entries, both
+  // WHERE userId = ? ORDER BY enteredAt DESC. The composite (not just
+  // userId alone) lets Postgres satisfy the filter and the sort from one
+  // index scan, with no separate sort step.
+  @@index([userId, enteredAt])
   @@map("draw_entries")
 }
 
