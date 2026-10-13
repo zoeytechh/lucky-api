@@ -1037,3 +1037,19 @@ Full clean build (`prisma generate && tsc`) passes after the migration.
 Full type-check clean on both repos; frontend production build passes.
 
 **Next:** layer 5 once the user's satisfied with layer 4. Still open: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation, the seamless iOS launch-splash image.
+
+---
+
+## 2026-10-13 — Device-level app-lock PIN for the installed app
+
+Follow-on from the layer 4 discussion: the user correctly identified the real hole OTP-only auth leaves open — SMS OTP proves "whoever holds this SIM," not "this is genuinely the account owner," so a phone stolen with its SIM intact isn't stopped by OTP login at all, and an *already logged-in* phone needs no login step to misuse. The fix is a device-level PIN lock, independent of the real session, same pattern every bank/messaging app layers on top of its own auth.
+
+- **Design**: purely client-side, never sent to the server — a salted SHA-256 hash (Web Crypto) in `localStorage`, scoped to this one device. New `lib/pinLock.ts` (hash/verify/clear), `lib/standalone.ts` (shared install-mode detection, extracted out of `IosInstallBanner` which had its own copy), `lib/usePinLock.ts` (the gate's state: `unlocked` starts `false` on every mount — cold launch covered for free — and flips back to `false` on `visibilitychange` to hidden, so resuming a backgrounded app re-locks it too).
+- **Mandatory setup**: `PinSetup.tsx` — not skippable, same reasoning as the avatar/name onboarding gate — shown once per device, right where `App.tsx` already gates on auth status and profile completeness (a third, independent gate: "is this device allowed to be used right now," checked *after* the real auth checks, not instead of them).
+- **Unlock**: `PinLockScreen.tsx`, shown on every cold launch and every resume from background, standalone only. "Forgot PIN?" clears the local hash and calls the real `logout()` — not a password reset, since there's nothing to reset server-side; forgetting the PIN just falls back to proving identity the strong way (phone + OTP) again. No explicit re-trigger needed for the next setup: logging out routes to `/login`, a genuinely different route than `App`, so `App` (and `usePinLock`'s state) fully unmounts and recomputes fresh on the next authenticated mount.
+- **Change PIN**: `ChangePinDialog.tsx` in Profile (same focus-trap modal pattern as `EntryConfirmDialog`/`WinnerModal`), requires the current PIN before accepting a new one — otherwise anyone already past the lock screen could silently take it over.
+- Verified the full flow live (Playwright, simulated standalone mode via a `matchMedia` override): fresh setup → confirm → reload re-locks (not re-setup) → wrong PIN rejected → correct PIN unlocks → background/resume re-locks → Profile shows the PIN row → change-PIN dialog opens correctly. One test-script mistake caught along the way, not an app bug: using `page.goto()` to reach Profile is itself a fresh page load, which correctly re-triggered the lock screen — switched to an in-app link click to test the real client-side-navigation case.
+
+Frontend-only, type-check and production build clean.
+
+**Next:** layer 5 once the user's satisfied with layer 4. Still open: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation, the seamless iOS launch-splash image.
