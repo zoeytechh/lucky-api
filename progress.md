@@ -1053,3 +1053,28 @@ Follow-on from the layer 4 discussion: the user correctly identified the real ho
 Frontend-only, type-check and production build clean.
 
 **Next:** layer 5 once the user's satisfied with layer 4. Still open: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation, the seamless iOS launch-splash image.
+
+---
+
+## 2026-10-13 — Foundation layer 5 (hosting/deployment): clean, plus a new app loader
+
+`Foundation/layer5.txt` — env vars, SSL/HTTPS, build process, domain config, deployment pipeline, rollback readiness.
+
+**Audit, verified where possible rather than assumed:**
+
+- Environment variables: PASS — grepped both repos for hardcoded secrets (nothing real found), confirmed `.env`/`.env.*` properly gitignored in both with only `.env.example` tracked (every secret field blank, not fake-filled), and no insecure fallback defaults (`jwt.ts` throws on boot rather than silently using a weak default).
+- SSL/HTTPS: PASS — checked both live production URLs directly with Playwright/curl rather than assuming: frontend loads over TLS 1.3 with a valid cert and zero mixed-content warnings; backend connects cleanly over HTTPS and `/api/health` confirms the database is genuinely reachable right now.
+- Build process: PASS — both build scripts are lean (two necessary steps each), already run clean start-to-finish many times this session.
+- Domain configuration: not applicable yet — no custom domain configured on either service, both still on platform defaults, so no DNS/redirect-loop risk exists to begin with.
+- Deployment pipeline: frontend auto-deploy-on-push confirmed in practice (this whole session's workflow only makes sense because it's already wired up); backend (Render) auto-deploy confirmed by the user via observed behavior (pushes already trigger a redeploy), not just a dashboard label.
+- Rollback readiness: tested live on Vercel — promoted an older deployment to production, confirmed the live site actually changed, then promoted the latest build back. A second verification pass planned for later the same day.
+
+**Separately, a new app loader was designed and shipped.** The user wanted one unified spinner-style loader (page-content loading stays on the existing Skeleton system, untouched) for app boot/reload and in-flight backend actions — a spinning ring in the app's own colors with the mascot + wordmark held steady at its center. Iterated through a design preview (published as a Claude artifact) before touching app code:
+
+- First pass only rotated a *static* gradient's position — didn't read as "color changing." Second pass used `filter: hue-rotate()`, the standard proven technique (confirmed via web research) for a genuinely eye-catching color-shifting loader — but a full 0→360° hue sweep mathematically has to pass through blue at some point, which isn't in this app's palette. Final version: three CSS custom properties registered via `@property` as `<color>`, each animated through an explicit 4-stop cycle (gold → coral → green → the app's own cream `--ink`, never anything else) and staggered via negative `animation-delay` — blue is unreachable by construction, not filtered out after the fact.
+- Built as `LoaderRing.tsx` (the shared ring+mascot+wordmark markup, reusing the existing `PartyMascot` component rather than duplicating its SVG) plus the animation CSS in `index.css`. `Loader.tsx` (in-flight actions) and `SplashLoader.tsx` (app boot/reload, including the UpdatePrompt refresh flow) both now render it, sized differently — one visual design, not two.
+- Caught and fixed a real bug during verification, not just by inspection: screenshotting the splash loader at three points in time showed the "LUCKY YOU" text rotating along with the ring, when only the ring should spin. Root cause: `loader-face` had ended up nested *inside* `loader-ring` in the React translation (inheriting its `transform: rotate()`) instead of as a sibling layered on top, like the verified-working artifact preview had it. Fixed by giving both elements a shared positioned wrapper (`.loader-stage`) as true siblings. Re-verified via the same three-screenshot timing test — text and mascot now stay upright throughout while the ring spins and its colors visibly cycle behind them.
+
+Frontend-only, type-check and production build clean.
+
+**Next:** layer 6 once the user's satisfied with layer 5. Still open: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation, the seamless iOS launch-splash image.
