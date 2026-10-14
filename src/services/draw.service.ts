@@ -102,7 +102,21 @@ type InternalPlaceEntryResult = PlaceEntryResult & {
 }
 
 type DrawEntryRow = { id: string; round_id: string; slot_number: number }
-type DrawEntryRowWithKey = DrawEntryRow & { idempotency_key: string }
+
+// Prisma wraps a raw query's underlying Postgres error as
+// PrismaClientKnownRequestError (code P2010), with the actual driver
+// error nested at err.meta.driverAdapterError.cause — confirmed empirically
+// against a real constraint violation (Prisma 7 + @prisma/adapter-pg), not
+// assumed from docs. Checked by constraint name specifically, not just
+// "was it a unique violation," so a genuinely different constraint failing
+// here (which would indicate a real bug elsewhere, e.g. a slot-number
+// collision) still surfaces as a real error instead of being
+// misclassified as AlreadyEnteredError.
+function isRoundUserUniqueViolation(err: unknown): boolean {
+  const cause = (err as { meta?: { driverAdapterError?: { cause?: { kind?: string; constraint?: { index?: string } } } } })
+    ?.meta?.driverAdapterError?.cause
+  return cause?.kind === 'UniqueConstraintViolation' && cause?.constraint?.index === 'draw_entries_round_id_user_id_key'
+}
 
 async function placeEntryOnce(userId: string, idempotencyKey: string): Promise<InternalPlaceEntryResult> {
   const result = await runInTransaction(async (tx) => {
@@ -119,51 +133,33 @@ async function placeEntryOnce(userId: string, idempotencyKey: string): Promise<I
       throw new DrawInProgressError(round.entries_open_at)
     }
 
-    // One entry per user per round — enforced here, inside the round's
-    // own lock, so it's correct even if the same user fires two genuinely
-    // different requests (different idempotencyKeys, e.g. a UI bug or a
-    // deliberate double-click) at the same instant: both queue on the
-    // round lock above, and only the first to actually run this check
-    // finds nothing and proceeds. The frontend also disables the Enter
-    // button once a user has an entry in the current round, but that's
-    // just UX — this is the actual guarantee.
-    const existingForUser = await tx.$queryRaw<DrawEntryRowWithKey[]>`
-      SELECT id, round_id, slot_number, idempotency_key FROM draw_entries
-      WHERE round_id = ${round.id} AND user_id = ${userId}
-      LIMIT 1
-    `
-    if (existingForUser.length > 0) {
-      const existing = existingForUser[0]
-      if (existing.idempotency_key !== idempotencyKey) {
-        throw new AlreadyEnteredError()
-      }
-      // Same request retried (double-tap, network retry) — safe replay,
-      // same semantics as the idempotency-key conflict handled below.
-      return {
-        entryId: existing.id,
-        slotNumber: existing.slot_number,
-        roundId: existing.round_id,
-        roundNumber: round.round_number,
-        roundSettled: false,
-        isReplay: true,
-      }
-    }
-
     const entryId = randomUUID()
     const slotNumber = round.entry_count + 1
 
-    // Idempotency check merged into the insert itself (ON CONFLICT DO
-    // NOTHING, one round trip for the common case) rather than a separate
-    // findUnique before it — same reasoning as ledger.service.postLedgerEntry,
-    // this is on the lock-serialized hot path where every round trip
-    // compounds across however many entries are queued behind the round
-    // lock. Falls back to one SELECT only on conflict (replay).
-    const inserted = await tx.$queryRaw<DrawEntryRow[]>`
-      INSERT INTO draw_entries (id, round_id, user_id, slot_number, stake_minor, fee_minor, idempotency_key, entered_at)
-      VALUES (${entryId}, ${round.id}, ${userId}, ${slotNumber}, ${STAKE_MINOR.toString()}::bigint, ${FEE_MINOR.toString()}::bigint, ${idempotencyKey}, now())
-      ON CONFLICT (idempotency_key) DO NOTHING
-      RETURNING id, round_id, slot_number
-    `
+    // Idempotency *and* "one entry per user per round" are both enforced
+    // by the insert itself (two separate unique constraints, each caught
+    // below) rather than a SELECT run before every attempt to check "does
+    // this user already have an entry in this round." That SELECT used to
+    // run unconditionally on the round-lock-held hot path, for every
+    // single entry — even the overwhelming majority that never conflict —
+    // costing a full extra round-trip each time; removing it compounds
+    // across however many entries are queued behind the round lock. The
+    // frontend also disables the Enter button once a user has an entry in
+    // the current round, but that's just UX — draw_entries_round_id_user_id_key
+    // (see schema.prisma) is the actual guarantee, same as before, just
+    // enforced by Postgres on the write instead of a read beforehand.
+    let inserted: DrawEntryRow[]
+    try {
+      inserted = await tx.$queryRaw<DrawEntryRow[]>`
+        INSERT INTO draw_entries (id, round_id, user_id, slot_number, stake_minor, fee_minor, idempotency_key, entered_at)
+        VALUES (${entryId}, ${round.id}, ${userId}, ${slotNumber}, ${STAKE_MINOR.toString()}::bigint, ${FEE_MINOR.toString()}::bigint, ${idempotencyKey}, now())
+        ON CONFLICT (idempotency_key) DO NOTHING
+        RETURNING id, round_id, slot_number
+      `
+    } catch (err) {
+      if (isRoundUserUniqueViolation(err)) throw new AlreadyEnteredError()
+      throw err
+    }
 
     if (inserted.length === 0) {
       const existing = await tx.$queryRaw<DrawEntryRow[]>`

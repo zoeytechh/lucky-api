@@ -1098,3 +1098,25 @@ Frontend-only, type-check and production build clean.
 **Pre-launch checklist from this layer** (not urgent today): set up billing alerts/spending limits on Vercel + Render when upgrading off free tier; upgrade Render off free tier before the first real 1000-entry round (avoids the free tier's cold-start-after-15-min-idle behavior being the first live round's bad first impression); revisit the Socket.IO/rate-limiter in-memory-state assumption only if Render ever needs multiple instances.
 
 **Next:** layer 7 once the user's satisfied with layer 6. Still open: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation, the seamless iOS launch-splash image, the layer 6 pre-launch checklist above.
+
+---
+
+## 2026-10-14 — Acted on the two layer 6 scaling findings, carefully
+
+The user asked to fix both scaling-readiness findings from layer 6. Treated them very differently given the stakes — one touches the core money-moving transaction.
+
+**Comment rate-limiter (safe, shipped directly)**: was an in-memory `Map`, single-instance-only (same class of issue as Socket.IO's broadcast state). Replaced with a Postgres lookup against the user's own most recent comment — the exact pattern `otp.service.ts`'s request cooldown already uses (confirmed, on re-reading, that the OTP cooldown was *already* DB-backed, correcting an imprecise line in the original layer 6 summary that called it in-memory too). Added `@@index([userId, createdAt])` on `draw_comments` for the new query, same reasoning as the `draw_entries` index from layer 3.
+
+**Socket.IO multi-instance fix**: left deferred, by explicit choice — it needs a new Redis dependency and would have zero effect today since Render runs one instance. Revisit only when that actually changes.
+
+**The `draw_rounds` row-lock fix**: this one got a real design conversation first, not a rushed implementation, because the lock's whole job is keeping slot-assignment and payment atomic — splitting them for speed reintroduces the exact "ghost entry" risk (a slot reserved with no payment) the current design was built to prevent. Landed on the safe version only: removed the upfront `SELECT` that checked "does this user already have an entry in this round" before every single insert attempt (previously running unconditionally on the round-lock-held hot path, for every entry, even the overwhelming majority that never conflict). Replaced with a new `@@unique([roundId, userId])` constraint on `draw_entries` — Postgres now enforces "one entry per user per round" on the write itself; `placeEntryOnce` just catches the specific constraint violation and translates it to `AlreadyEnteredError`, same external behavior as before. One extra round-trip removed per entry, no correctness tradeoff, the all-or-nothing transaction boundary is completely unchanged.
+
+**How this was actually verified** — the point of doing this carefully: used Neon branching (same mechanism proven in the layer 3 backup-restore test) to create an isolated `concurrency-test` branch off production, so the real integration test suite could run against real concurrent load without writing anything to the shared dev/prod database. Placed one real entry through the live production API first (`seed-filler-entries-live.ts`) before branching, so the test data reflected genuine current state. Confirmed the exact Prisma/pg driver-adapter error shape for the new constraint *empirically* (a throwaway script against the branch) rather than guessing from docs — `err.meta.driverAdapterError.cause.kind === 'UniqueConstraintViolation'`, checked by constraint name specifically so an unrelated constraint failure elsewhere can't be misclassified as `AlreadyEnteredError`.
+
+Three tests in `draw-entry.test.ts` failed on the branch — but a control run (same branch, same state, original un-modified code) failed identically, proving the failures were pre-existing test-environment timing (a branch cloned mid-reveal-cycle, each settlement's 30–63s reveal-hold window outpacing rapid successive test runs against a remote connection), not caused by this change. The other 10 tests — including the exact scenarios this change touches (`rejects entry when wallet balance is below the entry cost`, `replaying the same idempotencyKey does not create a second entry or double-charge`) — passed on both the fix and the control.
+
+Migration (`20261014231215_draw_entries_round_user_unique`) applied to production only after that verification, via `prisma migrate deploy` — additive only (a new unique index), confirmed zero existing duplicate `(round_id, user_id)` pairs before applying.
+
+Full clean build (`prisma generate && tsc`) passes.
+
+**Next:** layer 7 once the user's satisfied with layer 6.

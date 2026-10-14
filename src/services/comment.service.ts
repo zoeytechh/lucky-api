@@ -8,13 +8,15 @@ export class CommentValidationError extends Error {}
 export class CommentRateLimitError extends Error {}
 
 // A per-user cooldown between posts — the social-feed equivalent of the
-// draw's own idempotency keys, just much simpler: this isn't money, so an
-// in-memory Map is enough (same reasoning as realtime/socket.ts's "no
-// Redis adapter" — Render runs a single instance; this resets on restart,
-// which is fine for a lightweight anti-spam guard). Revisit only if this
-// backend ever scales horizontally.
+// draw's own idempotency keys. Checked against the user's own most recent
+// comment row (same pattern otp.service.ts's request cooldown already
+// uses), not an in-memory Map — a Map only holds state for whichever
+// single process handled the previous post, so it silently stops
+// enforcing the cooldown the moment this backend ever runs as more than
+// one instance (a request landing on a different instance would find no
+// record of the last post at all). Querying Postgres instead makes the
+// limit correct regardless of which instance handles which request.
 const RATE_LIMIT_MS = 8_000
-const lastPostedAt = new Map<string, number>()
 
 export type CommentWithUser = {
   id: string
@@ -69,10 +71,16 @@ export async function createComment(
     throw new CommentValidationError(`Comment must be 1–${MAX_COMMENT_LENGTH} characters`)
   }
 
-  const last = lastPostedAt.get(userId) ?? 0
-  const waitMs = RATE_LIMIT_MS - (Date.now() - last)
-  if (waitMs > 0) {
-    throw new CommentRateLimitError(`Please wait ${Math.ceil(waitMs / 1000)}s before commenting again`)
+  const lastOwn = await prisma.drawComment.findFirst({
+    where: { userId },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true },
+  })
+  if (lastOwn) {
+    const waitMs = RATE_LIMIT_MS - (Date.now() - lastOwn.createdAt.getTime())
+    if (waitMs > 0) {
+      throw new CommentRateLimitError(`Please wait ${Math.ceil(waitMs / 1000)}s before commenting again`)
+    }
   }
 
   if (replyToId) {
@@ -87,7 +95,6 @@ export async function createComment(
     data: { userId, body, replyToId },
     include: COMMENT_INCLUDE,
   })
-  lastPostedAt.set(userId, Date.now())
 
   return toCommentWithUser(comment)
 }

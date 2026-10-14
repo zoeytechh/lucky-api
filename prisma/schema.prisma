@@ -218,6 +218,11 @@ model DrawEntry {
   enteredAt DateTime  @default(now()) @map("entered_at")
   settledAt DateTime? @map("settled_at")
 
+  // "One entry per user per round" is now enforced by Postgres directly,
+  // not just by a SELECT placeEntryOnce ran before every insert (see
+  // draw.service.ts) — removes a round-trip from the lock-held hot path
+  // on every entry, not just the ones that actually conflict.
+  @@unique([roundId, userId])
   @@unique([roundId, slotNumber])
   @@index([outcome, settledAt]) // the "which payouts are still outstanding" query
   // Postgres doesn't auto-index foreign key columns (unlike MySQL) — this
@@ -257,6 +262,10 @@ model DrawComment {
   replies   DrawComment[] @relation("CommentReplies")
 
   @@index([isHidden, createdAt])
+  // The rate-limit check in comment.service.ts queries a user's own most
+  // recent comment on every post — same reasoning as draw_entries'
+  // (userId, enteredAt) index from the layer 3 audit.
+  @@index([userId, createdAt])
   @@map("draw_comments")
 }
 
