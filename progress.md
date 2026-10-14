@@ -1078,3 +1078,23 @@ Frontend-only, type-check and production build clean.
 Frontend-only, type-check and production build clean.
 
 **Next:** layer 6 once the user's satisfied with layer 5. Still open: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation, the seamless iOS launch-splash image.
+
+---
+
+## 2026-10-13 — Foundation layer 6 (cloud/compute cost & scaling): 5/6
+
+`Foundation/layer6.txt` — cost efficiency, resource sizing, serverless config, data transfer, scaling readiness, billing visibility. Serverless config is N/A for this stack: `lucky-api` is a persistent Render server, not functions, and the Vercel frontend has zero API routes of its own.
+
+**Findings, evidence-based, not guessed:**
+
+- Cost efficiency: PASS — no wasteful repeated calls found. The frontend deliberately uses Socket.IO push channels instead of polling the backend for live updates; the one interval (`UpdatePrompt`'s 60s SW check) hits Vercel's static `sw.js`, not Render compute.
+- Resource sizing: the Postgres connection pool (max 50) is evidence-tuned, not guessed — `lib/prisma.ts`'s own comment cites an actual test failure (50 concurrent wallet ops blew past a 15s maxWait at the node-postgres default of 10) that justified the number. Render itself is confirmed free tier for now, with an explicit plan to upgrade before the first real 1000-entry launch test — the right call, not an oversight.
+- Data transfer: PASS — avatars through Cloudinary (confirmed in layer 3), everything else small JSON or Vercel's own CDN.
+- Scaling readiness: two concrete bottlenecks, both already self-documented in the codebase before this audit ever looked — not newly discovered, just confirmed real. (1) `lib/prisma.ts`'s own comment: the single `draw_rounds` row lock serializing all 1000 entries into a round is "a fundamentally bigger queue than this [transaction] timeout is sized for... a real signal the design needs revisiting" at that scale. (2) `realtime/socket.ts`'s own comment: Socket.IO's broadcast state, the OTP cooldown, and the comment rate-limiter are all in-memory, assuming exactly one Render instance — "revisit only if this backend ever scales horizontally." Neither is a bug today; both are deliberate, appropriate-for-now tradeoffs, not urgent fixes.
+- Billing visibility: not yet set up, but deliberately deferred — the user's plan is to wire up billing alerts on both platforms at the same time as the Render tier upgrade, right before the first real 1000-entry test. Scheduled, not forgotten.
+
+**Score: 5/6.** The one open item (billing alerts) has an explicit pre-launch plan rather than being a gap nobody noticed.
+
+**Pre-launch checklist from this layer** (not urgent today): set up billing alerts/spending limits on Vercel + Render when upgrading off free tier; upgrade Render off free tier before the first real 1000-entry round (avoids the free tier's cold-start-after-15-min-idle behavior being the first live round's bad first impression); revisit the Socket.IO/rate-limiter in-memory-state assumption only if Render ever needs multiple instances.
+
+**Next:** layer 7 once the user's satisfied with layer 6. Still open: the live manual draw test, M7 — Paystack deposits, the dedicated test database, the automated daily leaderboard computation, the seamless iOS launch-splash image, the layer 6 pre-launch checklist above.
