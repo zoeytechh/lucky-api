@@ -1149,3 +1149,18 @@ Small, low-risk change. Both sides fired this nudge at 90% round capacity — mo
 Full type-check clean on both repos.
 
 **Next:** layer 7 once the user's satisfied with layer 6.
+
+---
+
+## 2026-10-15 — PIN lock now session-based, not re-locked on every reload
+
+User correctly called out that the original PIN lock behavior (re-lock on *every* reload, re-lock the instant the tab is backgrounded *at all*) wasn't how real apps like OPay behave — real apps tolerate a reload or a brief switch-away without re-prompting, only requiring the PIN again after genuinely stepping away for a while.
+
+- `usePinLock.ts` now starts `unlocked` from a session-scoped flag (`sessionStorage`, not `localStorage`) instead of always starting `false`. Survives a reload within the same tab/PWA process (so a reload no longer re-prompts); disappears the moment the OS actually ends that process (a genuine close-and-reopen still correctly re-prompts).
+- Added a 5-minute `BACKGROUND_TIMEOUT_MS`: going hidden is tracked (a ref, not state — recording *when* has no reason to trigger a render on its own), and only a background gap *longer* than that clears the session flag and re-locks. A brief switch away (checking a text, copying an OTP) no longer re-prompts.
+- Moved the session-flag read/write helpers into `pinLock.ts` (alongside the hash storage) so `clearPin()` — the "Forgot PIN" path — can invalidate both the stored PIN *and* any already-unlocked session in one place; a forgotten PIN shouldn't leave the device sitting unlocked against a hash that no longer exists.
+- Verified live (Playwright, simulated standalone mode + a mocked clock to fast-forward 6 minutes without actually waiting): reload → stays unlocked ✓; brief background → stays unlocked ✓; 6-minute background → re-locks ✓.
+
+Frontend-only change, type-check clean.
+
+**Next:** layer 7 once the user's satisfied with layer 6. Investigating: pages sometimes getting stuck on skeleton loading, and iOS parity with Android.
