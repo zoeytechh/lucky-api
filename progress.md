@@ -1164,3 +1164,17 @@ User correctly called out that the original PIN lock behavior (re-lock on *every
 Frontend-only change, type-check clean.
 
 **Next:** layer 7 once the user's satisfied with layer 6. Investigating: pages sometimes getting stuck on skeleton loading, and iOS parity with Android.
+
+---
+
+## 2026-10-15 — Found and fixed the real "stuck on skeleton" bug
+
+User reported pages sometimes getting permanently stuck on skeleton loading. Found the actual cause by reading every page's load logic, not guessed: `Draw.tsx`, `HowToPlay.tsx`, `Wallet.tsx` (transactions), and `Admin.tsx` all had load functions with **zero error handling** — a rejected fetch (network blip, expired token, a 500) left the relevant state at `null` forever, as an unhandled promise rejection, with no error shown and no way to recover short of a manual reload. (`Winners.tsx`/`RecentEntries.tsx` were already safe — they use `.finally()`, so a failure there falls through to an empty-state message instead of an infinite skeleton, just not an ideal message.)
+
+- Added `onRetry` support to the shared `ErrorAlert` component — a callback-driven "Try again" button, distinct from its existing `action` prop (a `Link`, for navigation-style recovery).
+- All four affected pages: wrapped their load calls in try/catch, added a dedicated `loadError` state (kept separate from each page's existing action-error state where one already existed — Draw's Enter-draw error, Admin's send-payout error — so load failures and action failures don't clobber each other), and the skeleton now gives way to `ErrorAlert` + retry once a load genuinely fails, instead of spinning forever.
+- Verified live, not just by inspection (Playwright): mocked `/api/draw/current` to fail on the first call and succeed on a retry — confirmed the error+retry UI appears instead of a stuck skeleton, and clicking retry genuinely re-triggers the load and successfully recovers. Caught two mistakes in the test script itself along the way (an incompletely-mocked endpoint, a wrong response shape) — both were test-harness bugs, not app bugs, confirmed by cross-checking against the real API contract.
+
+Frontend-only change, type-check clean.
+
+**Next:** layer 7 once the user's satisfied with layer 6. iOS parity with Android investigation next — includes the custom iOS launch-splash image (showing the app name instead of just the icon), already on the backlog.
