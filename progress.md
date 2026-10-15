@@ -1178,3 +1178,17 @@ User reported pages sometimes getting permanently stuck on skeleton loading. Fou
 Frontend-only change, type-check clean.
 
 **Next:** layer 7 once the user's satisfied with layer 6. iOS parity with Android investigation next — includes the custom iOS launch-splash image (showing the app name instead of just the icon), already on the backlog.
+
+---
+
+## 2026-10-15 — iOS parity with Android: three real gaps found and fixed
+
+User asked for iPhone users to have as good an experience as Android. Investigated systematically rather than guessing — found three concrete, iOS-specific gaps:
+
+1. **Push notifications silently failed on iOS.** Apple restricts the actual Push API to a PWA added to the home screen — in a regular tab it's either unexposed or `subscribe()` rejects, depending on iOS version. The "ENABLE" button's `onClick` was fire-and-forget (no `await`, no `.catch()`), so a rejection became a silent unhandled rejection with zero explanation — the button just reverted with nothing shown. Worse, the whole section was hidden outright whenever `!supported`, so an iOS user who hadn't installed the PWA never even knew the feature existed, unlike Android where it's always visible. Fixed: `usePushNotifications` now exposes `needsInstallForPush` (iOS + not standalone) and a proper `error` state; `enable()` catches every failure path instead of throwing into the void; `Profile.tsx` shows the section whenever either `supported` or `needsInstallForPush` is true, with a clear "Install Lucky You to your home screen to enable this" message in the latter case instead of a broken button. Verified live (Playwright, real iOS Safari user agent, non-standalone): the message renders correctly instead of the section being silently absent.
+2. **No safe-area handling despite `viewport-fit=cover` already being set** — that meta tag opts content into extending under the iPhone's notch/home-indicator, and nothing was compensating for it. The top is fine (`apple-mobile-web-app-status-bar-style: black` already reserves an opaque status bar), but two fixed-bottom banners (`IosInstallBanner`, `UpdatePrompt`) and `MobileMenu`'s full-height drawer could sit flush against (or under) the home-indicator gesture bar — something Android has no equivalent of, so this was a real "worse on iOS" gap, not a hypothetical. Fixed with `env(safe-area-inset-bottom)` added to each (a no-op everywhere without a safe-area concept, so zero effect on Android/desktop).
+3. **The native iOS launch splash showed just the mascot icon** (Apple's default with no custom startup image) — the user asked for this to show the app's name instead. New `scripts/generate-ios-splash.mjs`: renders "LUCKY YOU" in the brand's gold-on-green via `sharp` (already a transitive dependency) at all 13 unique iPhone screen-size classes (deduplicated from `@vite-pwa/assets-generator`'s own accurate device-size data — iPad intentionally excluded, this is a phone-first app), writes the correct `apple-touch-startup-image` media-query link tags into `index.html`. Android has no equivalent hook — its native splash is generated from the manifest icon/background and can't be overridden with custom text, a hard platform constraint, not a choice.
+
+Verified: full clean build, all 13 splash images and link tags confirmed present in the actual `dist/` output, type-check clean.
+
+**Next:** layer 7 once the user's satisfied with layer 6.
