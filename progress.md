@@ -1192,3 +1192,25 @@ User asked for iPhone users to have as good an experience as Android. Investigat
 Verified: full clean build, all 13 splash images and link tags confirmed present in the actual `dist/` output, type-check clean.
 
 **Next:** layer 7 once the user's satisfied with layer 6.
+
+---
+
+## 2026-10-15 — Loader redesign (Pulsing Mark) + PIN auto-submit
+
+User asked for other loader options beyond the existing spinning color-cycling ring, with a preference for colors that change "like the draw count animation." Built a 4-option comparison artifact (draw-fill ring, segmented ring, pulsing mark, bouncing dots) — user picked **Pulsing Mark**.
+
+- `PartyMascot.tsx` gained a third animation mode, `pulse` (breathing scale/opacity loop), alongside the existing idle sway and winner-celebration `dance` modes.
+- New `PulsingLoader.tsx`: the mascot breathing inside two staggered expanding-ring "ripples" (CSS-only, `prefers-reduced-motion`-safe), with the "LUCKY YOU" wordmark beneath. Replaces the old `LoaderRing.tsx` (deleted) entirely — its `@property`-based 4-color-stop cycling CSS is gone from `index.css`, along with the whole ring/face DOM structure.
+- `Loader.tsx` and `SplashLoader.tsx` rewritten on top of `PulsingLoader` — one visual language now covers all three loading contexts (in-flight actions, app boot/reload splash, dialog-scale spinners), just sized differently, instead of the ring design's separate treatment per context.
+
+Separately, mid-session the user asked that correct-PIN entry auto-unlock without pressing a button, the same way standard OTP/PIN inputs behave elsewhere. Applied consistently across all three PIN-entry surfaces, not just the primary unlock screen:
+
+- `PinLockScreen.tsx`: auto-verifies and unlocks the instant the 4th digit lands; a wrong PIN clears the input and shows an error instead, no auto-retry loop. The UNLOCK button stays as a fallback (Enter key, assistive tech, or just a user who prefers tapping it) — not removed.
+- `PinSetup.tsx`: both steps (create, confirm) auto-advance on 4 digits; a mismatched confirm PIN still shows the existing error and clears for retry.
+- `ChangePinDialog.tsx`: all three steps (verify old PIN, enter new PIN, confirm new PIN) auto-advance the same way — extracted `verifyOld()`/`confirmAndSave()` helpers so the auto-advance `useEffect`s and the existing form-submit fallback share the same logic rather than duplicating it.
+
+Verified live rather than just by inspection: stood up a temporary, unlinked test route (`/__pintest`, removed before commit) mounting all three PIN components plus the new loaders directly, since the PIN lock only activates in standalone/PWA mode and the real flow requires a live phone+OTP login the shared dev/prod database shouldn't be exercised for just to check a UI behavior. Confirmed via Playwright: PinSetup auto-advances through both steps on matching PINs; PinLockScreen auto-unlocks on a correct PIN and correctly does *not* on a wrong one (stays put, shows "Incorrect PIN"); ChangePinDialog auto-advances through all three steps; the new loader renders correctly (ripple rings + breathing mascot + wordmark) at every size including the splash screen. Full `tsc -b` clean on both the loader and PIN changes.
+
+Frontend-only change, type-check clean.
+
+**Next:** layer 7 once the user's satisfied with layer 6.
