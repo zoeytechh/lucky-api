@@ -1214,3 +1214,16 @@ Verified live rather than just by inspection: stood up a temporary, unlinked tes
 Frontend-only change, type-check clean.
 
 **Next:** layer 7 once the user's satisfied with layer 6.
+
+---
+
+## 2026-10-15 — Fixed splash loader off-center on real mobile browsers
+
+User reported the new loader wasn't centered on all screen sizes. `SplashLoader.tsx` used `min-h-screen` (`100vh`) to center it — `100vh` measures the full layout viewport, including the space a mobile browser's address bar occupies, not the area actually visible at any given moment. The loader was centering against a taller box than what was on screen, so it visually drifted depending on whether the browser chrome was expanded or collapsed.
+
+- Switched to `min-h-dvh` (dynamic viewport height), which tracks the real visible viewport and stays accurate as the browser chrome shows/hides.
+- Verified with Playwright across four fixed viewports (320×568 up to 1440×900) — centered exactly at every size, matching the pre-fix measurements, since headless Chrome has no address-bar chrome to diverge on; the real payoff is on an actual mobile browser, where `vh` and `dvh` disagree.
+
+Frontend-only change, type-check clean.
+
+**Next:** layer 7 once the user's satisfied with layer 6.
