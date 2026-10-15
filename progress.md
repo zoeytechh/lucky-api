@@ -1136,3 +1136,16 @@ The user asked to fix the third scaling finding after all — Socket.IO's broadc
 Full clean build passes.
 
 **Next:** layer 7 once the user's satisfied with layer 6. Provision a real Redis instance to verify the actual cross-instance broadcast, when wanted.
+
+---
+
+## 2026-10-15 — "Almost full" notification threshold: 90% → 70%
+
+Small, low-risk change. Both sides fired this nudge at 90% round capacity — moved to 70%, giving entrants more runway before a round closes.
+
+- Extracted the previously-inline `0.9` into a named `ALMOST_FULL_RATIO` constant on both sides, now `0.7`: `config/constants.ts` on the backend (used by the push-notification threshold in `draw.service.ts`), and a new local constant in `DrawSocketContext.tsx` on the frontend (used by both the live-socket effect and the on-mount catch-up check, which previously had two separately-typed `0.9`s that could've silently drifted apart). No shared import between the two repos, so both sides are named constants specifically so a future change to one is easy to find and match on the other, rather than hunting an inline number by hand.
+- No copy changes needed — neither the in-app toast nor the push notification text mentions "90%" literally, both just read off the actual slot/capacity numbers.
+
+Full type-check clean on both repos.
+
+**Next:** layer 7 once the user's satisfied with layer 6.

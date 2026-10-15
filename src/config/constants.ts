@@ -33,3 +33,12 @@ export const LOSS_COUNT = Math.floor((ROUND_SIZE - 1) / 2)
 export const REVEAL_MIN_MS = 30_000
 export const REVEAL_MAX_MS = 59_000
 export const REVEAL_HOLD_MS = 4_000
+
+// How full a round has to be before the "almost full" push fires (see
+// draw.service.ts) — must match the frontend's own ALMOST_FULL_RATIO in
+// DrawSocketContext.tsx exactly, since the in-app toast and this push are
+// meant to read as the same moment, not two different thresholds. Not a
+// shared import (separate repos/runtimes), so kept as a named constant on
+// both sides specifically so a future change to one is easy to find and
+// match on the other, rather than hunting down an inline 0.7 by hand.
+export const ALMOST_FULL_RATIO = 0.7

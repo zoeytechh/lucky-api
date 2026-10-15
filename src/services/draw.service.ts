@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import type { Prisma } from '../generated/prisma/client'
-import { ENTRY_COST_MINOR, FEE_MINOR, ROUND_SIZE, STAKE_MINOR, WINNER_PAYOUT_MINOR } from '../config/constants'
+import {
+  ALMOST_FULL_RATIO,
+  ENTRY_COST_MINOR,
+  FEE_MINOR,
+  ROUND_SIZE,
+  STAKE_MINOR,
+  WINNER_PAYOUT_MINOR,
+} from '../config/constants'
 import { prisma, runInTransaction } from '../lib/prisma'
 import { notifyWalletUpdate, tryGetIo } from '../realtime/socket'
 import { notifyInactiveNonParticipants, sendPushToUserIds } from './push.service'
@@ -295,13 +302,13 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
       capacity: ROUND_SIZE,
     })
 
-    // "Almost full" — 90% filled (same formula the frontend uses for the
-    // in-app toast; see DrawSocketContext). slotNumber strictly increases
-    // by exactly 1 per entry within a round, so this threshold is crossed
-    // by exactly one entry, ever — no separate per-round dedupe needed
-    // the way the frontend's does (that one also has to handle a page
-    // reload re-discovering an already-passed threshold, which this
-    // doesn't).
+    // "Almost full" — ALMOST_FULL_RATIO filled (same formula the frontend
+    // uses for the in-app toast; see DrawSocketContext's own constant of
+    // the same name). slotNumber strictly increases by exactly 1 per entry
+    // within a round, so this threshold is crossed by exactly one entry,
+    // ever — no separate per-round dedupe needed the way the frontend's
+    // does (that one also has to handle a page reload re-discovering an
+    // already-passed threshold, which this doesn't).
     //
     // Sent to every subscriber, not just the ones outside the round —
     // but with different content depending on which: someone already in
@@ -311,7 +318,7 @@ export async function placeEntry(userId: string, idempotencyKey: string): Promis
     // — if that device currently has the app open, it suppresses the
     // popup and trusts the in-app toast that same live page is already
     // showing (Draw.tsx/DrawSocketContext), rather than double-notifying.
-    const almostFullThreshold = Math.floor(ROUND_SIZE * 0.9)
+    const almostFullThreshold = Math.floor(ROUND_SIZE * ALMOST_FULL_RATIO)
     if (!result.roundSettled && result.slotNumber === almostFullThreshold) {
       ;(async () => {
         try {
