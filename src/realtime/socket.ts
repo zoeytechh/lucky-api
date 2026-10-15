@@ -1,4 +1,6 @@
 import type { Server as HttpServer } from 'node:http'
+import { createAdapter } from '@socket.io/redis-adapter'
+import { Redis } from 'ioredis'
 import { Server, type Socket } from 'socket.io'
 import { assertCompleteProfile, ProfileIncompleteError, resolveUserFromToken } from '../middleware/auth'
 import {
@@ -123,13 +125,70 @@ function initWalletNamespace(server: Server) {
   })
 }
 
+// Stops retrying after a handful of attempts with a short capped backoff,
+// instead of ioredis's default of retrying forever — found the hard way
+// while testing this locally: REDIS_URL was already set in .env to a
+// leftover placeholder (redis://localhost:6379) from back when Redis
+// wasn't needed yet, pointing at nothing real, and the default behavior
+// spammed ECONNREFUSED indefinitely rather than ever giving up. The same
+// stale value could just as easily be sitting in Render's real env vars
+// right now — this makes "set but unreachable" fail fast and quiet
+// instead of becoming a permanent background error storm in production
+// logs.
+function boundedRetry(times: number): number | null {
+  return times > 3 ? null : Math.min(times * 200, 1000)
+}
+
 /**
- * Plain in-memory Socket.IO — no Redis adapter. The adapter from the
- * original M10 plan is only needed to fan out events across *multiple*
- * server instances; Render is running a single instance of lucky-api, so
- * in-memory broadcast reaches every connected client correctly on its
- * own. Revisit only if this backend ever scales horizontally.
+ * Wires in the Redis adapter so broadcasts (round:progress, wallet:updated,
+ * comment:new, etc.) fan out correctly across *multiple* server instances,
+ * not just within whichever one instance happened to handle a given
+ * connection — without this, a client connected to a different instance
+ * than the one that processed an event would simply never hear about it.
  *
+ * Only takes effect once BOTH connections are actually confirmed ready,
+ * not just because REDIS_URL happens to be set (see boundedRetry's
+ * comment on why that distinction matters) — io.adapter() is deliberately
+ * not called until then, so an unset or unreachable REDIS_URL leaves
+ * Socket.IO on its default in-memory adapter the whole time, same as
+ * before this existed. That's the correct, fully-functional single-
+ * instance behavior, not a degraded fallback.
+ */
+function attachRedisAdapter(io: Server) {
+  const url = process.env.REDIS_URL
+  if (!url) {
+    console.log('REDIS_URL not set — Socket.IO running in-memory, single-instance only')
+    return
+  }
+
+  const pubClient = new Redis(url, { retryStrategy: boundedRetry })
+  const subClient = pubClient.duplicate()
+
+  let pubReady = false
+  let subReady = false
+  function attachOnceBothReady() {
+    if (!pubReady || !subReady) return
+    io.adapter(createAdapter(pubClient, subClient))
+    console.log('Socket.IO using the Redis adapter — broadcasts now fan out across instances')
+  }
+
+  pubClient.on('ready', () => {
+    pubReady = true
+    attachOnceBothReady()
+  })
+  subClient.on('ready', () => {
+    subReady = true
+    attachOnceBothReady()
+  })
+  pubClient.on('error', (err) => console.error('Redis (pub) error:', err.message || String(err)))
+  subClient.on('error', (err) => console.error('Redis (sub) error:', err.message || String(err)))
+  // Fires once boundedRetry gives up — the "set but unreachable" case.
+  pubClient.on('end', () => {
+    if (!pubReady) console.error('Redis (pub) gave up reconnecting — staying on the in-memory adapter')
+  })
+}
+
+/**
  * No handshake auth on the default namespace: round progress/settlement
  * outcomes aren't per-user-sensitive (everyone already sees who won), so
  * that channel is intentionally public. /comments and /wallet are the
@@ -142,6 +201,7 @@ export function initSocket(httpServer: HttpServer): Server {
       credentials: true,
     },
   })
+  attachRedisAdapter(io)
   initCommentsNamespace(io)
   initWalletNamespace(io)
   return io

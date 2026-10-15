@@ -1120,3 +1120,19 @@ Migration (`20261014231215_draw_entries_round_user_unique`) applied to productio
 Full clean build (`prisma generate && tsc`) passes.
 
 **Next:** layer 7 once the user's satisfied with layer 6.
+
+---
+
+## 2026-10-15 — Wired in the Socket.IO Redis adapter (the previously-deferred fix)
+
+The user asked to fix the third scaling finding after all — Socket.IO's broadcasts not reaching clients connected to a different backend instance. `@socket.io/redis-adapter` and `ioredis` were already in `package.json`, never actually used anywhere.
+
+- New `attachRedisAdapter()` in `realtime/socket.ts`, called from `initSocket()`. Fully optional: with no `REDIS_URL` set, the app behaves exactly as before (in-memory, single-instance) — nothing about current behavior changes unless Redis is actually configured and reachable.
+- **Real bug caught while testing locally, not assumed away**: `.env` already had a stale `REDIS_URL=redis://localhost:6379` placeholder, left over from before Redis was needed for anything — pointing at nothing real. With ioredis's default retry behavior, that produced an infinite `ECONNREFUSED` loop, forever, never giving up. The same stale value could just as easily be sitting in Render's actual production env vars right now. Fixed with a bounded retry (gives up after a few attempts, short capped backoff) — and, more importantly, `io.adapter()` is only ever called once both Redis connections are *confirmed ready*, not just because `REDIS_URL` happens to be set. An unreachable Redis now fails fast and quiet, logs once, and leaves Socket.IO on the in-memory adapter — the fully-correct single-instance behavior, not a degraded one.
+- Verified live locally: booted the real server against the known-unreachable placeholder URL, confirmed it gives up after ~4 bounded attempts (not forever), confirmed `/api/health` stays green and the server fully functional throughout, confirmed a clean compile.
+- **Not yet verified**: the actual cross-instance fan-out itself (two server processes, one real shared Redis, confirming a broadcast from one reaches a client on the other) — no Redis instance was available to test against locally (no local Redis, no Docker). That needs the user to provision one (Upstash's free tier is the natural fit here) and share a connection string, the same way the Neon branch connection string enabled real verification earlier in this session.
+- Also worth knowing: whatever's currently set for `REDIS_URL` on Render (if anything) should be checked — if it's the same stale placeholder, this change has zero effect until that's pointed at something real, by design.
+
+Full clean build passes.
+
+**Next:** layer 7 once the user's satisfied with layer 6. Provision a real Redis instance to verify the actual cross-instance broadcast, when wanted.
