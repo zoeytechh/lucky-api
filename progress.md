@@ -1227,3 +1227,16 @@ User reported the new loader wasn't centered on all screen sizes. `SplashLoader.
 Frontend-only change, type-check clean.
 
 **Next:** layer 7 once the user's satisfied with layer 6.
+
+---
+
+## 2026-10-15 — SplashLoader still off-center on a real phone after the dvh fix — root cause was scroll, not vh
+
+The `min-h-dvh` fix wasn't enough: a real-device screenshot (user's phone) showed the loader+wordmark sitting noticeably below the screen's true vertical center, even though headless-browser measurements at four viewport sizes showed exact centering. Root cause: `SplashLoader` isn't only shown on a cold page load — `App.tsx` also shows it mid-session whenever `status` briefly flips back to `'loading'` during a silent token refresh (e.g. the explicit reload `UpdatePrompt`'s Refresh button triggers one). A normal-flow `min-h-dvh` box's top edge is pinned to the *document*, not the viewport — so if the page still has a non-zero scroll offset carried over from whatever the user was scrolled to before that reload, the "centered" content shifts away from what's actually visible on screen.
+
+- Switched `SplashLoader` from `flex min-h-dvh items-center justify-center` to `fixed inset-0 flex items-center justify-center` — the same pattern this app already uses for its modals (e.g. `ChangePinDialog`). A `position: fixed` box is anchored to the current viewport by spec, independent of scroll state, so this whole bug class can't recur here regardless of where the user was scrolled to when the reload happened.
+- Deliberately scoped to `SplashLoader` only — `PinLockScreen`/`PinSetup` have the same `min-h-screen` pattern and would benefit in principle, but both have a numeric-keyboard-triggering input; swapping them to `fixed inset-0` risks the on-screen keyboard covering a vertically-centered form with no scroll escape, an unverified regression not worth introducing for a problem that wasn't reported on those screens.
+
+Frontend-only change, type-check clean.
+
+**Next:** layer 7 once the user's satisfied with layer 6.
