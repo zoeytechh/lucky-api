@@ -1267,3 +1267,18 @@ Verified the four links resolve to the correct routes (`/draw/recent`, `/draw/wi
 Frontend-only change, type-check clean.
 
 **Next:** layer 7 once the user's satisfied with layer 6.
+
+---
+
+## 2026-10-15 — Added a Support page, wired into the bottom tab bar
+
+User asked for a dedicated Support page, added to the new bottom tab bar. Asked for real contact details rather than fabricating a support email/WhatsApp number that wouldn't actually reach anyone — user provided both.
+
+- New `/support` page: email (`chibuzoremkalam@gmail.com`, via `mailto:`) and WhatsApp (`wa.me/2349074639302`) as tappable contact cards, plus a short FAQ — how a draw round works, current wallet funding/withdrawal status (correctly stated as not live yet, matching Wallet.tsx's own "coming soon" copy rather than the more optimistic framing in HowToPlay's static explainer text), the PIN "Forgot PIN?" recovery flow, and how to report a wrong entry/transaction.
+- Added as the bottom tab bar's fifth icon (Draw, Top 3, Wallet, **Support**, Profile) — still inside the 4-5 icon range reasoned about when the tab bar first shipped, so it doesn't start reading as cluttered.
+- Three new icons added to the shared set: `SupportIcon`, `MailIcon`, `WhatsAppIcon`.
+- Verified via Playwright: both contact links resolve to the correct `mailto:`/`wa.me` hrefs, the 5-tab bar renders without crowding at a 390px mobile width, and all 5 tabs point at the correct routes.
+
+Frontend-only change, type-check clean.
+
+**Next:** layer 7 once the user's satisfied with layer 6.
