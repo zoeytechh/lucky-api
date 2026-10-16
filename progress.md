@@ -1255,3 +1255,15 @@ User asked for a persistent bottom tab bar on mobile, matching Instagram/Snapcha
 Frontend-only change, type-check clean.
 
 **Next:** layer 7 once the user's satisfied with layer 6.
+
+---
+
+## 2026-10-15 — Filled the hamburger menu back in
+
+With Draw/Wallet/Leaderboard/Profile moved to the new bottom tab bar, `MobileMenu` was down to just "How to Play" (+ Admin for admins) — too sparse to justify its own nav affordance. Added the three pages that were otherwise only reachable via in-page buttons on Draw itself — Recent Entries, Winners, Comments — so the menu is the one mobile nav surface that works from *any* screen, not a second way to reach the same four destinations the tab bar already covers.
+
+Verified the four links resolve to the correct routes (`/draw/recent`, `/draw/winners`, `/draw/comments`, `/how-to-play`) via a quick DOM check rather than assumed from the route table.
+
+Frontend-only change, type-check clean.
+
+**Next:** layer 7 once the user's satisfied with layer 6.
