@@ -1240,3 +1240,18 @@ The `min-h-dvh` fix wasn't enough: a real-device screenshot (user's phone) showe
 Frontend-only change, type-check clean.
 
 **Next:** layer 7 once the user's satisfied with layer 6.
+
+---
+
+## 2026-10-15 — Instagram/Snapchat-style bottom tab bar for mobile
+
+User asked for a persistent bottom tab bar on mobile, matching Instagram/Snapchat, for the app's important pages — until now, every mobile destination sat behind the hamburger menu with no at-a-glance, one-tap access to the pages people actually return to constantly.
+
+- New `BottomTabBar.tsx`: fixed to the bottom of the screen (mobile only, `sm:hidden`), four icon+label tabs — Draw, Leaderboard ("Top 3"), Wallet, Profile — chosen as the four destinations worth a permanent slot; everything else stayed out deliberately, since a tab bar this size reads as cluttered past 4-5 icons. Added two new icons to the shared set (`PersonIcon`, `TicketIcon`) for Profile and Draw respectively, rather than reusing the animated `PartyMascot` for the Draw tab — that's already the constantly-swaying wordmark icon in the sticky top nav, and a second animated mascot in persistent chrome at the same time would read as visual clutter, not branding.
+- Trimmed `MobileMenu`'s link list down to just what the tab bar doesn't already cover (How to Play, Admin) — the previous list (Draw, Wallet, Leaderboard, How to Play, Profile, +Admin) would otherwise show four of those six destinations under two separate mobile nav affordances at once.
+- Reserved bottom padding on the page body (`pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0`) so the new fixed bar never covers page content, and pushed `IosInstallBanner`/`UpdatePrompt`'s bottom offset up on mobile (`bottom-[calc(4.5rem+...)]` instead of `calc(1rem+...)`, reverting to the original at the `sm:` breakpoint) so those two existing fixed-bottom toasts clear the new bar instead of rendering underneath it.
+- Verified via Playwright: tab bar renders with the correct 4 icons/labels at mobile widths, `display: none` confirmed at the `sm:` breakpoint (desktop unaffected), `NavLink` active-state matching confirmed working via the same pattern already proven in the top nav and `MobileMenu`. Bottom-padding math checked by hand against the bar's measured height rather than guessed.
+
+Frontend-only change, type-check clean.
+
+**Next:** layer 7 once the user's satisfied with layer 6.
