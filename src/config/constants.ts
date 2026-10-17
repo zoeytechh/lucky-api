@@ -38,6 +38,27 @@ export const MIN_WITHDRAWAL_MINOR = 100_000n // ₦1,000
 // — a verified account would reasonably get a much higher ceiling.
 export const MAX_WITHDRAWAL_MINOR = 10_000_000n // ₦100,000
 
+// Daily leaderboard prize: 2% of that day's gross fee revenue — the
+// Company (SYSTEM) wallet's accrued balance at the moment this runs —
+// split evenly three ways among the top 3 daily spenders. Not a fixed
+// amount: it scales with how much the platform actually earned that
+// day, same way the fee sweep does. This MUST run before the daily fee
+// sweep, not after — the sweep moves this same balance to the Profit
+// Account, and crediting the leaderboard winners afterward would leave
+// the SYSTEM wallet short (see docs/payment.md's fund-flow discussion).
+//
+// No automated job computes or pays this yet — M9 (BullMQ/Redis daily
+// cron) hasn't been built (see MILESTONES.md); this is the agreed
+// formula, ready to wire in once it exists. `dailyFeeRevenueMinor`
+// should be the Company wallet's balance read right before the job
+// credits anyone, so the 2% is computed against real accrued revenue,
+// never estimated.
+export const LEADERBOARD_PRIZE_POOL_RATE = 0.02 // 2% of daily fee revenue
+export function leaderboardPrizePerWinner(dailyFeeRevenueMinor: bigint): bigint {
+  const pool = (dailyFeeRevenueMinor * 2n) / 100n
+  return pool / 3n // split evenly three ways; any 1-2 kobo remainder is simply unclaimed
+}
+
 // Reference only (the real N=1000 split) — settlement.service computes
 // the actual split dynamically from entries.length, it does not import
 // these.

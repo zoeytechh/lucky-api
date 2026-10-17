@@ -1305,3 +1305,15 @@ Type-check clean on both repos. Skipped running the integration test suite — n
 Rounds out the min deposit/withdrawal limits from the pricing change above. `MAX_DEPOSIT_MINOR` = ₦5,000, `MAX_WITHDRAWAL_MINOR` = ₦100,000 — the latter a conservative default for an unverified (no-BVN) account, matching typical Nigerian mobile wallet tiers; full reasoning in `docs/payment.md`. Neither enforced in code yet, same caveat as the minimums — no live deposit/withdrawal route until Paystack lands.
 
 **Next:** layer 7 once the user's satisfied with layer 6.
+
+---
+
+## 2026-10-15 — Daily leaderboard prize formula: 2% of daily fee revenue, split 3 ways
+
+Previously a genuine open placeholder — no constant, no formula anywhere (just a manual admin "send any amount" endpoint). Agreed formula, full reasoning in `docs/payment.md`: 2% of that day's gross fee revenue (the Company wallet's accrued balance, same pool the daily sweep moves), split evenly between the top 3 daily spenders — same amount for every spot, not a declining tier. Must run before the daily sweep, same ordering constraint already established for the sweep itself.
+
+Added `LEADERBOARD_PRIZE_POOL_RATE` + `leaderboardPrizePerWinner()` to `constants.ts` — not wired into anything live yet, since the automated daily job (M9) still doesn't exist. Updated the frontend: `Leaderboard.tsx`'s placeholder rows now show the same amount for all 3 spots (previously a misleading declining 1st/2nd/3rd tier), and `HowToPlay.tsx`'s leaderboard description now states the actual formula instead of just "a cash prize."
+
+Type-check clean on both repos.
+
+**Next:** layer 7 once the user's satisfied with layer 6.
