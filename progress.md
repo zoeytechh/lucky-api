@@ -1282,3 +1282,18 @@ User asked for a dedicated Support page, added to the new bottom tab bar. Asked 
 Frontend-only change, type-check clean.
 
 **Next:** layer 7 once the user's satisfied with layer 6.
+
+---
+
+## 2026-10-15 — Entry price ₦1,200 → ₦1,000 (stake ₦800, fee ₦200 unchanged but no longer itemized)
+
+Business decision (full context in `docs/payment.md`'s Progress Log, since this is wallet/pricing territory) — engineering summary here. Stake dropped from ₦1,000 to ₦800; the ₦200 fee itself didn't change at all, it just stopped being shown as its own line to users. Total entry price: ₦1,000, down from ₦1,200.
+
+- `STAKE_MINOR` updated in `constants.ts`; `ENTRY_COST_MINOR` and `WINNER_PAYOUT_MINOR` are both derived formulas, so they updated automatically (winner payout ₦500,000 → ₦400,000 for a real 1,000-entry round, refund ₦1,000 → ₦800 since a refund is exactly 1 stake). Added `MIN_DEPOSIT_MINOR`/`MIN_WITHDRAWAL_MINOR` (₦1,000 each) alongside — not enforced anywhere yet, no live deposit/withdrawal route to attach them to until Paystack lands, but recorded now rather than left as a conversation-only decision.
+- Checked the live open round before touching `STAKE_MINOR` — zero entries, so no risk of a round ending up with a mix of ₦1,000-stake and ₦800-stake entries. That mix would have been a real bug, not just a cosmetic inconsistency: `decideSettlement` pays every entry in a round using the *current* `STAKE_MINOR`/`WINNER_PAYOUT_MINOR` constants, not each entry's own stored `stakeMinor` — a round straddling the pricing change would have shortchanged whoever entered under the old, higher stake.
+- Frontend: removed the itemized "stake + fee" breakdown from `EntryConfirmDialog.tsx`, `Draw.tsx`, and `HowToPlay.tsx` (all three now show only the total entry cost, still pulled dynamically from the API). `EntryConfirmDialog` dropped its now-unused `stakeMinor`/`feeMinor` props entirely rather than leave them unused. Updated the remaining hardcoded figures that don't come from the API: `AppFlowSteps.tsx`, `LoginIntro.tsx`'s tagline, and the SEO/share meta in `index.html`.
+- Also updated: a stale `₦1,200` in `lucky-api/scripts/seed-dummy-comments.ts`'s dummy comment text.
+
+Type-check clean on both repos. Skipped running the integration test suite — no separate test database configured, so `vitest run` would hit the same shared production database; relied on the type-check plus confirming the test assertions import `STAKE_MINOR`/`FEE_MINOR` dynamically rather than hardcoding the old values.
+
+**Next:** layer 7 once the user's satisfied with layer 6.
