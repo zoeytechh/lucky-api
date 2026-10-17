@@ -1,7 +1,15 @@
 // All money in kobo (bigint), never float, to avoid rounding bugs.
-export const STAKE_MINOR = 100_000n // ₦1,000
+//
+// Stake dropped from ₦1,000 to ₦800 (fee unchanged at ₦200) so the total
+// entry price reads as a cleaner ₦1,000 instead of ₦1,200 — the fee is no
+// longer broken out as a separate line item in user-facing copy, but it's
+// still tracked exactly as before: still debited, still credited to the
+// SYSTEM wallet, still real company revenue. Nothing about how the fee
+// itself works changed, only what the stake contributes to the pool, and
+// what the UI chooses to show.
+export const STAKE_MINOR = 80_000n // ₦800
 export const FEE_MINOR = 20_000n // ₦200
-export const ENTRY_COST_MINOR = STAKE_MINOR + FEE_MINOR // ₦1,200
+export const ENTRY_COST_MINOR = STAKE_MINOR + FEE_MINOR // ₦1,000
 
 // Overridable via env for tests only — production always runs the real
 // 1000. Settlement derives its refund/loss split from the actual number
@@ -12,8 +20,16 @@ export const ENTRY_COST_MINOR = STAKE_MINOR + FEE_MINOR // ₦1,200
 export const ROUND_SIZE = Number(process.env.DRAW_ROUND_SIZE) || 1000
 
 // Half the stake pool, derived from ROUND_SIZE so it stays correct at
-// whatever size is actually configured (real 1000: ₦500,000).
+// whatever size is actually configured (real 1000: ₦400,000, down from
+// ₦500,000 — the payout scales with the stake it's drawn from).
 export const WINNER_PAYOUT_MINOR = (STAKE_MINOR * BigInt(ROUND_SIZE)) / 2n
+
+// Not enforced anywhere yet — there's no real deposit/withdrawal route
+// until Paystack is wired in (M7). Recorded here now as the agreed
+// business rule so it's ready to wire into those routes the moment they
+// exist, rather than a decision that only lives in a conversation.
+export const MIN_DEPOSIT_MINOR = 100_000n // ₦1,000
+export const MIN_WITHDRAWAL_MINOR = 100_000n // ₦1,000
 
 // Reference only (the real N=1000 split) — settlement.service computes
 // the actual split dynamically from entries.length, it does not import

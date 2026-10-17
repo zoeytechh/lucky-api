@@ -9,7 +9,7 @@ import { prisma } from '../src/lib/prisma'
 
 const DUMMY_COMMENTS: { name: string; body: string }[] = [
   { name: 'Chidi O.', body: "Just won my first round! Didn't expect it to pay out this fast 🎉" },
-  { name: 'Amaka B.', body: 'Entered 3 times today, got refunded twice. Not bad for ₦1,200 a shot.' },
+  { name: 'Amaka B.', body: 'Entered 3 times today, got refunded twice. Not bad for ₦1,000 a shot.' },
   { name: 'Tunde A.', body: 'The live number roll had me stressed, ngl. Good suspense.' },
   { name: 'Ngozi E.', body: "Lost my stake this round but that's the game — trying again tomorrow." },
   { name: 'Femi K.', body: 'Been playing since the first round opened. Love the design.' },
