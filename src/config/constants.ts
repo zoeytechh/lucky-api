@@ -29,7 +29,14 @@ export const WINNER_PAYOUT_MINOR = (STAKE_MINOR * BigInt(ROUND_SIZE)) / 2n
 // business rule so it's ready to wire into those routes the moment they
 // exist, rather than a decision that only lives in a conversation.
 export const MIN_DEPOSIT_MINOR = 100_000n // ₦1,000
+export const MAX_DEPOSIT_MINOR = 500_000n // ₦5,000
 export const MIN_WITHDRAWAL_MINOR = 100_000n // ₦1,000
+// Conservative default for an unverified (no-BVN) account — a winner
+// (WINNER_PAYOUT_MINOR, currently ₦400,000) would need a few separate
+// withdrawals to cash out in full, which is normal at this KYC tier.
+// Revisit once Phase 2 BVN/NIN verification exists (see docs/payment.md)
+// — a verified account would reasonably get a much higher ceiling.
+export const MAX_WITHDRAWAL_MINOR = 10_000_000n // ₦100,000
 
 // Reference only (the real N=1000 split) — settlement.service computes
 // the actual split dynamically from entries.length, it does not import
