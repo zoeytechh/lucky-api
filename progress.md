@@ -1297,3 +1297,11 @@ Business decision (full context in `docs/payment.md`'s Progress Log, since this 
 Type-check clean on both repos. Skipped running the integration test suite — no separate test database configured, so `vitest run` would hit the same shared production database; relied on the type-check plus confirming the test assertions import `STAKE_MINOR`/`FEE_MINOR` dynamically rather than hardcoding the old values.
 
 **Next:** layer 7 once the user's satisfied with layer 6.
+
+---
+
+## 2026-10-15 — Added max deposit/withdrawal limits
+
+Rounds out the min deposit/withdrawal limits from the pricing change above. `MAX_DEPOSIT_MINOR` = ₦5,000, `MAX_WITHDRAWAL_MINOR` = ₦100,000 — the latter a conservative default for an unverified (no-BVN) account, matching typical Nigerian mobile wallet tiers; full reasoning in `docs/payment.md`. Neither enforced in code yet, same caveat as the minimums — no live deposit/withdrawal route until Paystack lands.
+
+**Next:** layer 7 once the user's satisfied with layer 6.
